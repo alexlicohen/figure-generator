@@ -14,7 +14,7 @@ import cairosvg
 from lxml import etree
 
 from .config import Config, load_config
-from .models import FigureSchema, Manifest
+from .models import FigureSchema, FigureType, Manifest, PlotRequest, StandardsReport
 from .palette import PaletteRegistry
 from .router import route
 from .standards import enforce
@@ -184,6 +184,49 @@ def compose_panels(
         assets=all_assets,
         standards=report_total or enforce("<svg/>", style)[1],
         warnings=all_warnings,
+    )
+    (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
+    return manifest
+
+
+def compose_data_plot(
+    request: PlotRequest,
+    out_dir: str | Path,
+    *,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    palette: PaletteRegistry | None = None,
+    export_png: bool = True,
+) -> Manifest:
+    """Render a distribution plot (M8 data_plot) -> compliant SVG + raster + manifest.
+
+    Raises DynamitePlotError if a bar+SEM plot is requested without the override.
+    """
+    from .generators.data_plot import build_distribution_svg
+
+    config = config or load_config()
+    style = style or StyleSpec(journal=config.journal)
+    palette = palette or PaletteRegistry()
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    svg, actions = build_distribution_svg(request, style, palette)
+    report = StandardsReport()
+    for a in actions:
+        report.add(a)
+    cleaned, report = enforce(svg, style, report=report)
+
+    svg_path = out_dir / "figure.svg"
+    svg_path.write_text(cleaned)
+    rasters = _export_raster(cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=False)
+
+    manifest = Manifest(
+        figure_type=FigureType.DATA_PLOT,
+        caption_seed=request.title,
+        svg_path=str(svg_path),
+        raster_paths=rasters,
+        journal=style.journal,
+        standards=report,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest

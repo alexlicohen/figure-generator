@@ -87,3 +87,37 @@ class StyleSpec:
 
     def is_overridden(self, rule_id: str) -> bool:
         return rule_id in self.allow_overrides
+
+
+def mpl_rcparams(style: StyleSpec) -> dict:
+    """matplotlib rcParams that bake the same StyleSpec defaults into data plots.
+
+    Same floors the SVG style_guard enforces (no top/right spines, light gridlines behind
+    data, sans-serif at the journal font size, text kept as text in SVG export).
+    """
+    preset = style.preset
+    return {
+        "svg.fonttype": "none",  # keep text as text in SVG
+        "pdf.fonttype": 42,  # embed real fonts in PDF
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": preset.default_font_pt,
+        "axes.titlesize": preset.default_font_pt,
+        "axes.labelsize": preset.default_font_pt,
+        "xtick.labelsize": preset.default_font_pt,
+        "ytick.labelsize": preset.default_font_pt,
+        "legend.fontsize": preset.default_font_pt,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.edgecolor": "#333333",
+        "axes.linewidth": max(0.5, preset.min_stroke_pt),
+        "axes.axisbelow": True,
+        "axes.grid": True,
+        "axes.grid.axis": "y",
+        "grid.color": "#B0B0B0",
+        "grid.linewidth": 0.5,
+        "lines.linewidth": 1.0,
+        "figure.dpi": preset.raster_dpi,
+        "savefig.bbox": "tight",
+        "savefig.dpi": preset.raster_dpi,
+    }

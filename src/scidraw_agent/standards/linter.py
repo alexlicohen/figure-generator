@@ -25,6 +25,11 @@ class RuleId(StrEnum):
     GRIDLINE_DEMOTE = "gridline_demote"
     # Decoding hierarchy
     NO_PIE = "no_pie"
+    # Distribution rigor (data_plot)
+    NO_DYNAMITE = "no_dynamite"
+    DISTRIBUTION_GEOM = "distribution_geom"
+    OVERPLOT_ALPHA = "overplot_alpha"
+    SUPERPLOT = "superplot"
     # Typography / layout
     MIN_FONT = "min_font"
     MIN_STROKE = "min_stroke"
@@ -89,6 +94,30 @@ RULES: dict[RuleId, Rule] = {
         StandardsTier.BLOCK,
         "Pie/donut chart detected — refuse (use position/length encoding, e.g. a bar).",
         "https://www.informationvisuals.com/information-design-theory/elementary-perceptual-tasks",
+    ),
+    RuleId.NO_DYNAMITE: Rule(
+        RuleId.NO_DYNAMITE,
+        StandardsTier.BLOCK,
+        "Bar+SEM 'dynamite' plot for continuous data — show the data distribution instead.",
+        "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002128",
+    ),
+    RuleId.DISTRIBUTION_GEOM: Rule(
+        RuleId.DISTRIBUTION_GEOM,
+        StandardsTier.DEFAULT,
+        "Distribution geometry chosen by sample size (dots / box+points / violin).",
+        "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002128",
+    ),
+    RuleId.OVERPLOT_ALPHA: Rule(
+        RuleId.OVERPLOT_ALPHA,
+        StandardsTier.DEFAULT,
+        "Point opacity scaled to sample size to manage overplotting.",
+        "https://clauswilke.com/dataviz/overlapping-points.html",
+    ),
+    RuleId.SUPERPLOT: Rule(
+        RuleId.SUPERPLOT,
+        StandardsTier.DEFAULT,
+        "Nested replicates shown as a SuperPlot (points by replicate, replicate means).",
+        "https://rupress.org/jcb/article/219/6/e202001064/151717",
     ),
     RuleId.MIN_FONT: Rule(
         RuleId.MIN_FONT,
