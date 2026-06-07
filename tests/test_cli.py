@@ -48,6 +48,22 @@ def test_lint_pie_override_passes(tmp_path):
     assert "compliant" in result.stdout
 
 
+def test_compose_schema_renders_locally(tmp_path):
+    schema = (
+        '{"figure_type": "mechanistic_circuit", '
+        '"entities": [{"id": "m1", "label": "M1"}, {"id": "sc", "label": "Spinal cord"}], '
+        '"edges": [{"source": "m1", "target": "sc", "relation": "projects_to"}]}'
+    )
+    sp = tmp_path / "schema.json"
+    sp.write_text(schema)
+    result = runner.invoke(
+        app, ["compose-schema", str(sp), "--out", str(tmp_path / "out"), "--no-assets"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert "figure:" in result.stdout
+    assert (tmp_path / "out" / "figure.svg").exists()
+
+
 def test_prompt_decline_exits_with_redirect():
     result = runner.invoke(app, ["prompt", "render the lesion t-map on the cortical surface"])
     assert result.exit_code == 2

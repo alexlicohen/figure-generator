@@ -11,8 +11,11 @@ from pathlib import Path
 
 import typer
 
+from .compose import compose_figure
 from .config import load_config
 from .extract import NeuroDeclineError
+from .fetch import AssetFetcher
+from .models import FigureSchema
 from .run import figure_from_file, figure_from_text
 from .standards import StyleGuardBlocked, enforce
 from .theme import StyleSpec
@@ -93,6 +96,32 @@ def lint(
     for a in report.overrides:
         typer.secho(f"override {a.rule_id}: {a.message}", fg=typer.colors.CYAN)
     typer.secho("compliant", fg=typer.colors.GREEN)
+
+
+@app.command(name="compose-schema")
+def compose_schema(
+    schema_path: Path,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
+    assets: bool = typer.Option(True, help="Fetch CC assets for anatomical figures."),
+) -> None:
+    """Render a FigureSchema JSON file to a figure (no Claude API call — subscription mode).
+
+    Author the schema yourself (or have Claude Code author it) and render it locally.
+    """
+    config = load_config()
+    fig = FigureSchema.model_validate_json(schema_path.read_text())
+    fetcher = AssetFetcher(config) if assets else None
+    try:
+        manifest = compose_figure(
+            fig, out, config=config, style=_style(journal, allow_override), fetcher=fetcher
+        )
+    except StyleGuardBlocked as e:
+        for a in e.actions:
+            typer.secho(f"BLOCK {a.rule_id}: {a.message}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    _emit(manifest)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,41 @@ the manifest's `standards` block**.
   Pydantic schema) + low `effort`, not sampling params.
 - API key from `ANTHROPIC_API_KEY` env only — never hardcode.
 
+## Two run modes (subscription vs API)
+
+The Claude **extraction** call is the only LLM step. It can run two ways:
+
+- **Subscription mode (no `ANTHROPIC_API_KEY`).** *You, Claude Code,* author the
+  `FigureSchema` from the user's text — billed to the user's Claude subscription — then call
+  only the **local** MCP tools / CLI to render. Workflow:
+  1. `check_decline(text)` — if `declined`, STOP and give the user the listed real-render
+     tools (nilearn/FSLeyes/MRIcroGL/Surf Ice); do **not** draw a schematic.
+  2. Author a `FigureSchema` (contract below). Do **not** invent entities/steps/anatomy not
+     supported by the text.
+  3. `self_check(schema, source_text=...)` — surface invented-entity / brain-orientation /
+     dangling-edge warnings; fix and re-author if needed.
+  4. `compose_figure(schema, out_dir, use_assets=true)` (MCP) or
+     `scidraw compose-schema schema.json --out DIR` (CLI). Renders + enforces standards +
+     writes the manifest. No API key needed.
+- **API mode (`ANTHROPIC_API_KEY` set).** `make_figure` / `schema_from_text` /
+  `scidraw prompt|ingest` make their own Claude call. For non-interactive / scripted use.
+
+### FigureSchema authoring contract (subscription mode)
+- `figure_type`: `mechanistic_circuit` (neural/molecular wiring) · `analysis_pipeline`
+  (ordered steps) · `study_design` (cohorts/arms) · `anatomical` (labelled structures) ·
+  `data_plot` (distributions — use `compose_data_plot`/`PlotRequest`, not this schema).
+- `entities[]`: `id` (short, edge-referenced), `label`, `kind`
+  (`region|celltype|modality|cohort|step|other`), optional `suggested_asset_query` (for
+  organic structures, e.g. "pyramidal neuron"), optional `group` (stable colour per group).
+- `edges[]`: `source`, `target` (entity ids), `relation` — polarity matters:
+  `excites|projects_to|flows_to` (excitatory/forward), `inhibits` (inhibitory),
+  `modulates` (neuromodulatory), `predicts`, `other`.
+- `data_kind`: `none` unless colour encodes a quantity (`signed` t/z/%-change, `magnitude`
+  one-sided, `categorical`, `cyclic`).
+- Brain slices (axial/coronal/sagittal): state orientation (neurological/radiological) and
+  L/R in the label, or `self_check` flags it.
+- `caption_seed`: one sentence grounded strictly in the input.
+
 ## Engineering conventions
 
 - Python ≥3.11, `src/` layout, package `scidraw_agent`. Pin deps in `pyproject.toml`.
