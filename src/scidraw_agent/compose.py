@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import cairosvg
 from lxml import etree
 
 from .config import Config, load_config
@@ -39,8 +38,45 @@ def _viewport(svg: str) -> tuple[float, float]:
     return num(root.get("width")), num(root.get("height"))
 
 
-def _export_raster(svg: str, out_dir: Path, dpi: int, *, png: bool, pdf: bool) -> list[str]:
+def _ensure_cairo_discoverable() -> None:
+    """On macOS, point cffi's dlopen at Homebrew's libcairo if it isn't already findable.
+
+    cairocffi (under cairosvg) dlopen()s ``libcairo.2.dylib`` by leaf name, and the dynamic
+    loader does not search Homebrew's lib dir (``/opt/homebrew/lib`` on Apple Silicon,
+    ``/usr/local/lib`` on Intel) by default — so an installed cairo is invisible. Setting
+    ``DYLD_FALLBACK_LIBRARY_PATH`` before the import is honoured by dlopen. No-op when already
+    set, on non-macOS, or when no Homebrew cairo is present.
+    """
+    import os
+    import sys
+
+    if sys.platform != "darwin" or "DYLD_FALLBACK_LIBRARY_PATH" in os.environ:
+        return
+    for base in ("/opt/homebrew", "/usr/local"):
+        libdir = f"{base}/lib"
+        if Path(libdir, "libcairo.2.dylib").exists():
+            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = libdir
+            return
+
+
+def _export_raster(
+    svg: str, out_dir: Path, dpi: int, *, png: bool, pdf: bool
+) -> tuple[list[str], list[str]]:
+    """Best-effort raster export. SVG is the primary deliverable (see the brief); PNG/PDF
+    are secondary, so a missing/unloadable cairo never fails a run — it is recorded as a
+    warning and the SVG still ships. Returns (raster_paths, warnings).
+    """
     paths: list[str] = []
+    if not (png or pdf):
+        return paths, []
+    _ensure_cairo_discoverable()
+    try:
+        import cairosvg  # lazy: importing compose must not hard-require libcairo
+    except Exception as exc:  # ImportError, or OSError when libcairo can't be dlopen'd
+        return paths, [
+            f"raster export skipped: cairosvg/libcairo unavailable ({type(exc).__name__}). "
+            "SVG written; install cairo (e.g. `brew install cairo`) for PNG/PDF export."
+        ]
     data = svg.encode()
     if png:
         p = out_dir / "figure.png"
@@ -50,7 +86,7 @@ def _export_raster(svg: str, out_dir: Path, dpi: int, *, png: bool, pdf: bool) -
         p = out_dir / "figure.pdf"
         cairosvg.svg2pdf(bytestring=data, write_to=str(p))
         paths.append(str(p))
-    return paths
+    return paths, []
 
 
 def compose_figure(
@@ -77,7 +113,7 @@ def compose_figure(
 
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
-    rasters = _export_raster(
+    rasters, raster_warnings = _export_raster(
         cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=export_pdf
     )
 
@@ -89,7 +125,7 @@ def compose_figure(
         journal=style.journal,
         assets=result.assets,
         standards=report,
-        warnings=result.warnings + (extra_warnings or []),
+        warnings=result.warnings + (extra_warnings or []) + raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest
@@ -174,7 +210,9 @@ def compose_panels(
 
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(combined)
-    rasters = _export_raster(combined, out_dir, style.preset.raster_dpi, png=export_png, pdf=False)
+    rasters, raster_warnings = _export_raster(
+        combined, out_dir, style.preset.raster_dpi, png=export_png, pdf=False
+    )
 
     manifest = Manifest(
         figure_type=schemas[0].figure_type,
@@ -183,7 +221,7 @@ def compose_panels(
         journal=style.journal,
         assets=all_assets,
         standards=report_total or enforce("<svg/>", style)[1],
-        warnings=all_warnings,
+        warnings=all_warnings + raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest
@@ -218,7 +256,9 @@ def compose_data_plot(
 
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
-    rasters = _export_raster(cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=False)
+    rasters, raster_warnings = _export_raster(
+        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=False
+    )
 
     manifest = Manifest(
         figure_type=FigureType.DATA_PLOT,
@@ -227,6 +267,7 @@ def compose_data_plot(
         raster_paths=rasters,
         journal=style.journal,
         standards=report,
+        warnings=raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest

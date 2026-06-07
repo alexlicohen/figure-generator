@@ -22,11 +22,14 @@ from pathlib import Path
 from fastmcp import FastMCP
 from pydantic import ValidationError
 
+from .compose import compose_data_plot as _compose_data_plot
 from .compose import compose_figure as _compose_figure
+from .compose import compose_panels as _compose_panels
 from .config import load_config
 from .extract import NeuroDeclineError, extract, neuro_decline_trigger
 from .fetch import AssetFetcher
-from .models import FigureSchema
+from .generators.data_plot import DynamitePlotError
+from .models import FigureSchema, PlotRequest
 from .run import figure_from_file, figure_from_text
 from .selfcheck import brain_panels_missing_orientation, invented_entities
 from .standards import StyleGuardBlocked, enforce
@@ -140,6 +143,59 @@ def compose_figure(
         return {"valid": False, "errors": e.errors(include_url=False)}
     try:
         manifest = _compose_figure(fig, out_dir, config=config, style=style, fetcher=fetcher)
+    except StyleGuardBlocked as e:
+        return {"blocked": [a.model_dump() for a in e.actions]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def make_data_plot(
+    request: dict,
+    out_dir: str,
+    journal: str = "nature",
+    allow_overrides: list[str] | None = None,
+) -> dict:
+    """Render a distribution plot -> compliant figure.svg + raster + manifest (local, no API).
+
+    ``request`` is a PlotRequest: {"groups": {name: [values]}, optional "replicates",
+    "xlabel", "ylabel", "title", "force_kind"}. Distribution rigor is enforced (no dynamite
+    bars, geom-by-sample-size, SuperPlots for nested replicates). force_kind="bar" is blocked
+    unless ``no_dynamite`` is in allow_overrides.
+    """
+    style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
+    try:
+        req = PlotRequest.model_validate(request)
+    except ValidationError as e:
+        return {"valid": False, "errors": e.errors(include_url=False)}
+    try:
+        manifest = _compose_data_plot(req, out_dir, config=load_config(), style=style)
+    except DynamitePlotError as e:
+        return {"blocked": [{"rule_id": "no_dynamite", "message": str(e)}]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def compose_panels_figure(
+    schemas: list[dict],
+    out_dir: str,
+    journal: str = "nature",
+    allow_overrides: list[str] | None = None,
+    use_assets: bool = True,
+) -> dict:
+    """Tile multiple FigureSchemas into one multi-panel figure (A/B/C ...) (local, no API).
+
+    A shared palette keeps each group's colour stable across panels. ``use_assets`` fetches
+    CC-licensed organic assets for anatomical panels.
+    """
+    style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
+    config = load_config()
+    fetcher = AssetFetcher(config) if use_assets else None
+    try:
+        figs = [FigureSchema.model_validate(s) for s in schemas]
+    except ValidationError as e:
+        return {"valid": False, "errors": e.errors(include_url=False)}
+    try:
+        manifest = _compose_panels(figs, out_dir, config=config, style=style, fetcher=fetcher)
     except StyleGuardBlocked as e:
         return {"blocked": [a.model_dump() for a in e.actions]}
     return _manifest_summary(manifest)

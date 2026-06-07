@@ -32,12 +32,14 @@ def test_lint_compliant(tmp_path):
     assert "compliant" in result.stdout
 
 
-def test_lint_pie_blocks(tmp_path):
+def test_lint_pie_auto_converts(tmp_path):
+    # A7: pie auto-converts to a sorted bar — lint passes and reports the fix.
     p = tmp_path / "pie.svg"
     p.write_text(_PIE)
     result = runner.invoke(app, ["lint", str(p)])
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     assert "no_pie" in result.stdout
+    assert "compliant" in result.stdout
 
 
 def test_lint_pie_override_passes(tmp_path):
@@ -68,3 +70,46 @@ def test_prompt_decline_exits_with_redirect():
     result = runner.invoke(app, ["prompt", "render the lesion t-map on the cortical surface"])
     assert result.exit_code == 2
     assert "Surf Ice" in result.stdout
+
+
+def test_plot_renders_distribution(tmp_path):
+    data = tmp_path / "data.json"
+    data.write_text(
+        '{"groups": {"control": [1,2,3,2,1,2.5], "treated": [3,4,5,4,3,4.5]}, "ylabel": "signal"}'
+    )
+    result = runner.invoke(app, ["plot", str(data), "--out", str(tmp_path / "out")])
+    assert result.exit_code == 0, result.stdout
+    assert (tmp_path / "out" / "figure.svg").exists()
+
+
+def test_plot_dynamite_blocks(tmp_path):
+    data = tmp_path / "data.json"
+    data.write_text('{"groups": {"a": [1,2,3], "b": [4,5,6]}, "force_kind": "bar"}')
+    result = runner.invoke(app, ["plot", str(data), "--out", str(tmp_path / "out")])
+    assert result.exit_code == 1
+    assert "no_dynamite" in result.stdout
+
+
+def test_plot_dynamite_override_renders(tmp_path):
+    data = tmp_path / "data.json"
+    data.write_text('{"groups": {"a": [1,2,3], "b": [4,5,6]}, "force_kind": "bar"}')
+    result = runner.invoke(
+        app, ["plot", str(data), "--out", str(tmp_path / "out"), "--allow-override", "no_dynamite"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert (tmp_path / "out" / "figure.svg").exists()
+
+
+def test_panels_renders_multipanel(tmp_path):
+    schemas = tmp_path / "panels.json"
+    schemas.write_text(
+        '[{"figure_type": "mechanistic_circuit", '
+        '"entities": [{"id": "a", "label": "Patients", "group": "patients"}]}, '
+        '{"figure_type": "mechanistic_circuit", '
+        '"entities": [{"id": "b", "label": "Controls", "group": "control"}]}]'
+    )
+    result = runner.invoke(
+        app, ["panels", str(schemas), "--out", str(tmp_path / "out"), "--no-assets"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert (tmp_path / "out" / "figure.svg").exists()
