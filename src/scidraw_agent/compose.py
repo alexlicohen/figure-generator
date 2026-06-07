@@ -61,6 +61,7 @@ def compose_figure(
     style: StyleSpec | None = None,
     fetcher=None,
     palette: PaletteRegistry | None = None,
+    extra_warnings: list[str] | None = None,
     export_png: bool = True,
     export_pdf: bool = False,
 ) -> Manifest:
@@ -88,7 +89,7 @@ def compose_figure(
         journal=style.journal,
         assets=result.assets,
         standards=report,
-        warnings=result.warnings,
+        warnings=result.warnings + (extra_warnings or []),
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest

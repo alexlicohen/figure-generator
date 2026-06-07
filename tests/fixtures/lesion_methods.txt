@@ -1,0 +1,11 @@
+Introduction
+We applied lesion network mapping in a pediatric epilepsy cohort.
+
+Methods
+First, we manually segmented each lesion to produce a binary lesion mask. Next, we
+normalised every mask to MNI152 template coordinates. We then seeded a normative
+connectome database to compute a lesion network map for each patient. Finally, we
+thresholded the network maps and tallied shared nodes across patients.
+
+Results
+Shared nodes converged on a common network.
