@@ -26,6 +26,17 @@ overridable only via logged escape hatch), **[WARN]** (advisory), or **[DEFAULT]
 ## Decoding hierarchy (Cleveland & McGill 1984)
 - **[BLOCK] No pie/donut for quantitative data** → sorted horizontal bar.
 
+## Distribution rigor (data_plot, M8)
+- **[BLOCK] No bar+SEM "dynamite" plot for continuous data** → show the distribution.
+  Weissgerber et al. 2015, PLoS Biol.
+  https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002128
+- **[DEFAULT]** Geometry by sample size: n≤10 jittered dots; 10<n≤50 box + points;
+  n>50 violin + box.
+- **[DEFAULT]** Overplotting: point opacity scaled to n.
+- **[DEFAULT] SuperPlot** for nested replicates (≥3): colour points by replicate, overlay
+  replicate means, stats on N replicates. Lord et al. 2020, J Cell Biol.
+  https://rupress.org/jcb/article/219/6/e202001064/151717
+
 ## Schematic semantics (neuro)
 - **[DEFAULT]** Excitatory = filled pointed arrowhead; inhibitory = flat T-bar; modulatory
   = dashed/open — PMC, *Architectures of Neuronal Circuits*.

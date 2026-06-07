@@ -21,6 +21,7 @@ class FigureType(StrEnum):
     ANALYSIS_PIPELINE = "analysis_pipeline"
     STUDY_DESIGN = "study_design"
     ANATOMICAL = "anatomical"
+    DATA_PLOT = "data_plot"
 
 
 class EntityKind(StrEnum):
@@ -101,6 +102,25 @@ class FigureSchema(BaseModel):
         """Edges whose endpoints are not declared entities (validation aid)."""
         ids = self.entity_ids()
         return [e for e in self.edges if e.source not in ids or e.target not in ids]
+
+
+# --------------------------------------------------------------------------- #
+# Data-plot request (M8 data_plot module)
+# --------------------------------------------------------------------------- #
+class PlotRequest(BaseModel):
+    """A distribution-plot request: one list of values per group.
+
+    ``replicates`` (optional, parallel to each group's values) enables a SuperPlot —
+    points coloured by replicate, replicate means overlaid, stats on N replicates.
+    """
+
+    groups: dict[str, list[float]]
+    replicates: dict[str, list[str]] | None = None
+    xlabel: str = ""
+    ylabel: str = "value"
+    title: str = ""
+    # force a plot kind to exercise the dynamite ban; "auto" picks by sample size
+    force_kind: str = "auto"
 
 
 # --------------------------------------------------------------------------- #
