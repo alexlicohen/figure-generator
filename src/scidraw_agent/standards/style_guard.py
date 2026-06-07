@@ -36,7 +36,10 @@ class StyleGuardBlocked(Exception):
 # small helpers
 # --------------------------------------------------------------------------- #
 def _local(el: etree._Element) -> str:
-    return etree.QName(el).localname
+    tag = el.tag
+    if not isinstance(tag, str):  # comments / processing instructions
+        return ""
+    return tag.split("}")[-1]
 
 
 def _num(s: str | None) -> float | None:
