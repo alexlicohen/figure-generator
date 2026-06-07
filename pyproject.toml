@@ -1,0 +1,54 @@
+[project]
+name = "scidraw-agent"
+version = "0.1.0"
+description = "Prompt-driven scientific schematic generator with a Design Standards Engine"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "scidraw-agent contributors" }]
+dependencies = [
+    "anthropic>=0.49",
+    "pydantic>=2.6",
+    "requests>=2.31",
+    "zenodo-get>=1.6",
+    "lxml>=5.0",
+    "svgutils==0.3.4",
+    "drawsvg>=2.4.1",
+    "svgpathtools>=1.7",
+    "cairosvg>=2.9",
+    "graphviz>=0.21",
+    "pymupdf>=1.24",
+    "cmcrameri>=1.9",
+    "colorspacious>=1.1.2",
+    "fastmcp>=2.3",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "responses>=0.25",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+scidraw = "scidraw_agent.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scidraw_agent"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
