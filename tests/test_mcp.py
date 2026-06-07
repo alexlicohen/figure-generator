@@ -66,3 +66,45 @@ def test_compose_figure_returns_svg_path(tmp_path):
 def test_list_rules_includes_catalog():
     data = _call("list_rules", {})
     assert "no_pie" in data and data["no_pie"]["tier"] == "block"
+
+
+def test_check_decline_local():
+    assert _call("check_decline", {"text": "render the lesion t-map on the cortical surface"})[
+        "declined"
+    ]
+    assert not _call("check_decline", {"text": "M1 projects to spinal cord"})["declined"]
+
+
+def test_self_check_local_flags_invented_and_dangling():
+    schema = {
+        "figure_type": "mechanistic_circuit",
+        "entities": [{"id": "a", "label": "Amygdala"}, {"id": "b", "label": "Cerebellum"}],
+        "edges": [{"source": "a", "target": "ghost", "relation": "other"}],
+    }
+    data = _call("self_check", {"schema": schema, "source_text": "only the amygdala is described"})
+    assert data["valid"] is True
+    blob = " ".join(data["warnings"])
+    assert "Cerebellum" in blob and "ghost" in blob
+
+
+def test_compose_figure_local_no_assets(tmp_path):
+    schema = {
+        "figure_type": "mechanistic_circuit",
+        "entities": [{"id": "m1", "label": "M1"}, {"id": "sc", "label": "Spinal cord"}],
+        "edges": [{"source": "m1", "target": "sc", "relation": "projects_to"}],
+    }
+    data = _call(
+        "compose_figure",
+        {"schema": schema, "out_dir": str(tmp_path / "out"), "use_assets": False},
+    )
+    assert data["svg_path"].endswith("figure.svg")
+    assert (tmp_path / "out" / "figure.svg").exists()
+
+
+def test_make_figure_declines_neuro_render(tmp_path):
+    data = _call(
+        "make_figure",
+        {"text": "render the lesion t-map on the cortical surface", "out_dir": str(tmp_path)},
+    )
+    assert data["declined"] is True
+    assert "Surf Ice" in data["reason"]

@@ -58,13 +58,59 @@ Each run writes `figure.svg` (editable, text-as-text), a raster (`figure.png`), 
 `figure.manifest.json` recording **license provenance** (each asset's DOI + license) and
 **standards provenance** (applied fixes, honoured overrides, warnings).
 
-### MCP server (Claude Code and other MCP clients)
+### Use in a local Claude Code session (interactive)
+
+The Claude extraction step can run two ways:
+
+- **Subscription mode (no `ANTHROPIC_API_KEY`)** — Claude Code itself authors the
+  `FigureSchema` (billed to your Claude subscription) and calls only the **local** tools to
+  render. The package never calls the Anthropic API. This is the default when no key is set.
+- **API mode (`ANTHROPIC_API_KEY` set)** — the package makes its own Claude call
+  (`make_figure`, `scidraw prompt`). Pay-as-you-go API credits; best for scripts/automation.
+
+Register the MCP server once (writes to your local Claude config — no repo changes):
 
 ```bash
-claude mcp add --transport stdio scidraw -- python -m scidraw_agent.mcp_server
+claude mcp add scidraw -- uv run python -m scidraw_agent.mcp_server
 ```
 
-Tools: `schema_from_text`, `find_asset`, `compose_figure`, `lint_figure`, `list_rules`.
+In **subscription mode**, ask in natural language and Claude Code drives the *local* tools:
+`check_decline` (refuse real-render requests) → author the schema → `self_check` (catch
+invented entities / missing brain orientation) → `compose_figure` (render + enforce + manifest).
+The `FigureSchema` authoring contract is in `CLAUDE.md`. CLI equivalent for a hand-written
+or Claude-authored schema:
+
+```bash
+scidraw compose-schema schema.json --out fig      # no API call
+```
+
+Then, inside Claude Code in this repo, just ask in natural language — Claude calls the tools:
+
+> "Make a figure of the corticospinal tract from M1 to spinal cord with local inhibition,
+>  save it to ./fig."
+> "Ingest methods.pdf and draw the analysis pipeline."
+> "Find a CC-licensed thalamus asset."
+> "Lint ./fig/figure.svg."
+
+**Tools exposed:** `make_figure` (text → figure on disk, full pipeline), `make_figure_from_file`
+(.pdf/.txt/.md → figure), `schema_from_text`, `find_asset`, `compose_figure`, `lint_figure`,
+`list_rules`. `make_figure*` fetch real SciDraw/Zenodo assets by default (`use_assets`).
+
+Requires `ANTHROPIC_API_KEY` in the environment Claude Code launches from.
+
+To share the server with anyone who opens the repo, commit a project-scoped `.mcp.json`:
+
+```json
+{ "mcpServers": { "scidraw": { "command": "uv", "args": ["run", "--", "python", "-m", "scidraw_agent.mcp_server"] } } }
+```
+
+Plain CLI works too (Claude can run these in its terminal):
+
+```bash
+scidraw prompt "M1 projects to spinal cord" --out fig
+scidraw ingest paper.pdf --section methods --out fig
+scidraw lint fig/figure.svg
+```
 
 ## Design Standards Engine
 

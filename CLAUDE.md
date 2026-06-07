@@ -45,6 +45,41 @@ the manifest's `standards` block**.
   Pydantic schema) + low `effort`, not sampling params.
 - API key from `ANTHROPIC_API_KEY` env only — never hardcode.
 
+## Two run modes (subscription vs API)
+
+The Claude **extraction** call is the only LLM step. It can run two ways:
+
+- **Subscription mode (no `ANTHROPIC_API_KEY`).** *You, Claude Code,* author the
+  `FigureSchema` from the user's text — billed to the user's Claude subscription — then call
+  only the **local** MCP tools / CLI to render. Workflow:
+  1. `check_decline(text)` — if `declined`, STOP and give the user the listed real-render
+     tools (nilearn/FSLeyes/MRIcroGL/Surf Ice); do **not** draw a schematic.
+  2. Author a `FigureSchema` (contract below). Do **not** invent entities/steps/anatomy not
+     supported by the text.
+  3. `self_check(schema, source_text=...)` — surface invented-entity / brain-orientation /
+     dangling-edge warnings; fix and re-author if needed.
+  4. `compose_figure(schema, out_dir, use_assets=true)` (MCP) or
+     `scidraw compose-schema schema.json --out DIR` (CLI). Renders + enforces standards +
+     writes the manifest. No API key needed.
+- **API mode (`ANTHROPIC_API_KEY` set).** `make_figure` / `schema_from_text` /
+  `scidraw prompt|ingest` make their own Claude call. For non-interactive / scripted use.
+
+### FigureSchema authoring contract (subscription mode)
+- `figure_type`: `mechanistic_circuit` (neural/molecular wiring) · `analysis_pipeline`
+  (ordered steps) · `study_design` (cohorts/arms) · `anatomical` (labelled structures) ·
+  `data_plot` (distributions — use `compose_data_plot`/`PlotRequest`, not this schema).
+- `entities[]`: `id` (short, edge-referenced), `label`, `kind`
+  (`region|celltype|modality|cohort|step|other`), optional `suggested_asset_query` (for
+  organic structures, e.g. "pyramidal neuron"), optional `group` (stable colour per group).
+- `edges[]`: `source`, `target` (entity ids), `relation` — polarity matters:
+  `excites|projects_to|flows_to` (excitatory/forward), `inhibits` (inhibitory),
+  `modulates` (neuromodulatory), `predicts`, `other`.
+- `data_kind`: `none` unless colour encodes a quantity (`signed` t/z/%-change, `magnitude`
+  one-sided, `categorical`, `cyclic`).
+- Brain slices (axial/coronal/sagittal): state orientation (neurological/radiological) and
+  L/R in the label, or `self_check` flags it.
+- `caption_seed`: one sentence grounded strictly in the input.
+
 ## Engineering conventions
 
 - Python ≥3.11, `src/` layout, package `scidraw_agent`. Pin deps in `pyproject.toml`.
@@ -53,3 +88,39 @@ the manifest's `standards` block**.
 - Tests with `pytest`; mock HTTP (`responses`) and the Claude call. One live Zenodo
   smoke test is allowed in the asset-layer tests.
 - Lint/format with `ruff`.
+
+## Project status (handoff memory — updated 2026-06-07)
+
+**Done & merged (PR #1 → `main`).** Milestones M0–M8 complete; 73 tests green; ruff clean.
+- M0 scaffold (`models` IR, `config`, `llm`) · M1 Design Standards Engine (`theme`,
+  `palette`, `standards/{linter,style_guard}`) · M2 asset layer + license ledger
+  (`fetch`, `registry`, `backends/{zenodo,bioicons}`) · M3 generators + compose
+  (`generators/{circuit,pipeline,anatomical,data_plot}`, `router`, `compose`) ·
+  M4 `extract` (neuro-decline gate) + `selfcheck` · M5 `ingest` + `run` · M6
+  `mcp_server` + `cli` · M7 README/`scripts/setup.sh` · M8 `data_plot`.
+- **M9 microscopy: SKIPPED permanently** — user does MRI/neuroimaging only. Do not build it.
+
+**Architecture invariant:** every generator returns SVG that `compose` runs through
+`standards.enforce` before writing; raster (cairosvg) inherits the guarded SVG. Add new
+generators behind the `Generator` protocol + `router`; never bypass the guard.
+
+**Pipeline:** `run.figure_from_text/file` → `ingest` (section) → `extract` (Claude
+structured outputs, neuro-decline gate first) → `selfcheck` → `route` → generator →
+`style_guard.enforce` → `compose` writes `figure.svg` + `figure.png` + `figure.manifest.json`
+(license + standards blocks).
+
+**Environment facts:**
+- System dep: Graphviz `dot` (pipeline/study-design). `scripts/setup.sh` installs it +
+  deps; verified working. SessionStart hook NOT committed (permission guard blocked it;
+  user to add `.claude/settings.json` manually if wanted).
+- Network: only the Claude `extract` call hits the net at runtime; assets cached after
+  first fetch. The original build sandbox blocked `zenodo.org` (host allowlist) so SciDraw
+  fell back to placeholders + the bioicons fallback. **Local dev now has Zenodo access** —
+  expect real SciDraw assets for `anatomical` figures.
+- LLM: `claude-opus-4-8`; structured outputs + low `effort` (no temperature/budget_tokens).
+  `ANTHROPIC_API_KEY` from env only.
+
+**Known follow-ups (not yet built):** `data_plot` has no CLI/MCP surface yet (library +
+`compose_data_plot` only); pie→bar auto-conversion still refuses rather than converts
+(possible now that the matplotlib backend exists); anatomical asset embedding is exercised
+only by the live path (placeholder path is what's unit-tested).
