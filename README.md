@@ -26,7 +26,17 @@ export ANTHROPIC_API_KEY=sk-ant-...      # only the extraction call uses the net
 
 `scripts/setup.sh` does both steps idempotently (Graphviz + Python deps). For ephemeral
 environments (e.g. Claude Code on the web) wire it as a `SessionStart` hook so tests can run
-on a fresh container.
+on a fresh container — add this to `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash scripts/setup.sh" } ] }
+    ]
+  }
+}
+```
 
 ## Use
 
