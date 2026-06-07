@@ -66,3 +66,12 @@ def test_compose_figure_returns_svg_path(tmp_path):
 def test_list_rules_includes_catalog():
     data = _call("list_rules", {})
     assert "no_pie" in data and data["no_pie"]["tier"] == "block"
+
+
+def test_make_figure_declines_neuro_render(tmp_path):
+    data = _call(
+        "make_figure",
+        {"text": "render the lesion t-map on the cortical surface", "out_dir": str(tmp_path)},
+    )
+    assert data["declined"] is True
+    assert "Surf Ice" in data["reason"]

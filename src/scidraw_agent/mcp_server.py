@@ -21,6 +21,7 @@ from .config import load_config
 from .extract import NeuroDeclineError, extract
 from .fetch import AssetFetcher
 from .models import FigureSchema
+from .run import figure_from_file, figure_from_text
 from .standards import StyleGuardBlocked, enforce
 from .standards.linter import RULES
 from .theme import StyleSpec
@@ -103,6 +104,69 @@ def list_rules() -> dict:
         str(rid): {"tier": r.tier, "message": r.message, "source_url": r.source_url}
         for rid, r in RULES.items()
     }
+
+
+def _manifest_summary(manifest) -> dict:
+    return {
+        "figure_type": str(manifest.figure_type),
+        "svg_path": manifest.svg_path,
+        "raster_paths": manifest.raster_paths,
+        "assets": [a.model_dump() for a in manifest.assets],
+        "warnings": manifest.warnings,
+        "standards": _report_dict(manifest.standards),
+    }
+
+
+@mcp.tool
+def make_figure(
+    text: str,
+    out_dir: str,
+    journal: str = "nature",
+    allow_overrides: list[str] | None = None,
+    use_assets: bool = True,
+) -> dict:
+    """Text -> compliant figure on disk (full pipeline: extract, self-check, compose).
+
+    Declines real neuroimaging-render requests. ``use_assets`` fetches CC-licensed organic
+    assets (network) for anatomical figures; set False for offline placeholders.
+    """
+    config = load_config()
+    style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
+    fetcher = AssetFetcher(config) if use_assets else None
+    try:
+        manifest = figure_from_text(text, out_dir, config=config, style=style, fetcher=fetcher)
+    except NeuroDeclineError as e:
+        return {"declined": True, "reason": str(e), "matched": e.matched, "use_instead": e.tools}
+    except StyleGuardBlocked as e:
+        return {"blocked": [a.model_dump() for a in e.actions]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def make_figure_from_file(
+    path: str,
+    out_dir: str,
+    section: str | None = None,
+    journal: str = "nature",
+    allow_overrides: list[str] | None = None,
+    use_assets: bool = True,
+) -> dict:
+    """Paper/grant file (.pdf/.txt/.md) -> compliant figure on disk.
+
+    ``section`` ('methods' | 'aims') narrows the source; omit to use the whole document.
+    """
+    config = load_config()
+    style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
+    fetcher = AssetFetcher(config) if use_assets else None
+    try:
+        manifest = figure_from_file(
+            path, out_dir, config=config, style=style, fetcher=fetcher, section=section
+        )
+    except NeuroDeclineError as e:
+        return {"declined": True, "reason": str(e), "matched": e.matched, "use_instead": e.tools}
+    except StyleGuardBlocked as e:
+        return {"blocked": [a.model_dump() for a in e.actions]}
+    return _manifest_summary(manifest)
 
 
 def main() -> None:
