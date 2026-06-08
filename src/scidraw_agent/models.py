@@ -187,7 +187,12 @@ class Credits(BaseModel):
     Reused image assets are credited in the figure legend, not the bibliography.
     """
 
-    legend_line: str = Field(default="", description="One sentence to paste into the legend.")
+    legend_line: str = Field(
+        default="", description="Compact credit line (grouped by source+license) — paste this."
+    )
+    legend_line_full: str = Field(
+        default="", description="Full Title/Author/Source/License (CC TASL) credit line."
+    )
     per_asset: list[str] = Field(default_factory=list)
     attribution_required: bool = Field(
         default=False, description="True if any asset is CC-BY (legally must be credited)."

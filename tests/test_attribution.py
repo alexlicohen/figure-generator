@@ -7,6 +7,7 @@ from scidraw_agent.attribution import (
     build_credits,
     credits_text,
     figure_credit_line,
+    figure_credit_line_compact,
     license_label,
 )
 from scidraw_agent.models import AssetRecord
@@ -62,8 +63,21 @@ def test_figure_credit_line_combines_and_dedups():
     assert "Putamen" not in line  # placeholder excluded
 
 
-def test_build_credits_flags_cc_by_attribution_required():
-    assert build_credits([_zenodo(), _bioart()]).attribution_required is True
+def test_compact_credit_groups_by_source_and_drops_titles():
+    line = figure_credit_line_compact([_zenodo(), _zenodo(), _bioart(), _placeholder()])
+    assert line.startswith("Adapted from")
+    assert "SciDraw (R. Roe; CC BY 4.0)" in line  # initials, title dropped, "via Zenodo" gone
+    assert "NIH BIOART Source (public domain)" in line
+    assert '"Pyramidal Neuron"' not in line  # no titles in the compact form
+    assert "Putamen" not in line  # placeholder excluded
+    assert line.count("R. Roe") == 1  # author deduped across two records
+
+
+def test_build_credits_sets_compact_default_and_full_variant():
+    c = build_credits([_zenodo(), _bioart()])
+    assert c.legend_line.startswith("Adapted from")  # default = compact
+    assert c.legend_line_full.startswith("Illustrative assets")  # full TASL kept too
+    assert c.attribution_required is True
     assert build_credits([_bioart()]).attribution_required is False  # CC0/PD only
     assert build_credits([_placeholder()]).per_asset == []
 
@@ -72,7 +86,7 @@ def test_credits_text_states_requirement_and_distinguishes_references():
     txt = credits_text(build_credits([_zenodo()]))
     assert "MUST be credited" in txt
     assert "not bibliography references" in txt
-    assert "── Legend credit line ──" in txt
+    assert "compact" in txt and "Full credit" in txt  # both variants offered
 
     txt_cc0 = credits_text(build_credits([_bioart()]))
     assert "credit not required" in txt_cc0

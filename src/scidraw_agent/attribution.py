@@ -59,6 +59,19 @@ def _authors(record: AssetRecord) -> str:
     return ", ".join(" ".join(c.split()) for c in record.creators if c and c.strip())
 
 
+def _is_public(license_id: str | None) -> bool:
+    return (license_id or "").strip().lower() in _NO_ATTRIB_REQUIRED
+
+
+def _initials(name: str) -> str:
+    """'Last, First Middle' -> 'F. Last'; pass other forms through cleaned up."""
+    name = " ".join(name.split())
+    if "," in name:
+        last, first = (p.strip() for p in name.split(",", 1))
+        return f"{first[:1]}. {last}".strip() if first else last
+    return name
+
+
 def asset_credit(record: AssetRecord) -> str | None:
     """A full per-asset credit sentence, or None for a placeholder (no real asset)."""
     if record.is_placeholder:
@@ -88,6 +101,38 @@ def figure_credit_line(records: list[AssetRecord]) -> str:
     return "Illustrative assets adapted from open repositories: " + "; ".join(parts) + "."
 
 
+def figure_credit_line_compact(records: list[AssetRecord]) -> str:
+    """The practical figure convention: grouped by Source+License, titles dropped, authors as
+    initials (CC-BY only). CC requires attribution "reasonable to the medium" — this keeps the
+    creator + source + license CC-BY needs while dropping the droppable Title.
+    """
+    groups: dict[tuple[str, str], list[str]] = {}
+    order: list[tuple[str, str]] = []
+    for r in records:
+        if r.is_placeholder:
+            continue
+        name, _ = license_label(r.license)
+        src = _source(r).split(" (")[0]  # drop "(via Zenodo)"-style detail for compactness
+        key = (src, name)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        if not _is_public(r.license):  # public-domain/CC0 need no author credit
+            for c in r.creators:
+                ini = _initials(c) if c and c.strip() else ""
+                if ini and ini not in groups[key]:
+                    groups[key].append(ini)
+    if not order:
+        return ""
+    parts = [
+        f"{src} ({', '.join(authors)}; {name})"
+        if (authors := groups[(src, name)])
+        else f"{src} ({name})"
+        for (src, name) in order
+    ]
+    return "Adapted from " + "; ".join(parts) + "."
+
+
 def build_credits(records: list[AssetRecord]) -> Credits:
     per = [c for r in records if (c := asset_credit(r))]
     required = any(
@@ -95,7 +140,8 @@ def build_credits(records: list[AssetRecord]) -> Credits:
         for r in records
     )
     return Credits(
-        legend_line=figure_credit_line(records),
+        legend_line=figure_credit_line_compact(records),  # default = the compact convention
+        legend_line_full=figure_credit_line(records),
         per_asset=per,
         attribution_required=required,
     )
@@ -115,8 +161,11 @@ def credits_text(credits: Credits) -> str:
             else "All assets are CC0 / public domain (credit not required, included as courtesy)."
         ),
         "",
-        "── Legend credit line ──",
+        "── Legend credit line (compact — recommended for figures) ──",
         credits.legend_line,
+        "",
+        "── Full credit (Title / Author / Source / License) ──",
+        credits.legend_line_full,
         "",
         "── Per asset ──",
     ]
