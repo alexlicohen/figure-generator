@@ -85,7 +85,7 @@ def test_resolve_returns_none_when_all_incompatible(tmp_path):
         "hits": {
             "hits": [
                 {
-                    "metadata": {"title": "SA", "license": {"id": "cc-by-sa-4.0"}},
+                    "metadata": {"title": "Neuron (SA)", "license": {"id": "cc-by-sa-4.0"}},
                     "files": [{"key": "a.svg", "links": {"self": "https://zenodo.org/a.svg"}}],
                 }
             ]
@@ -97,6 +97,55 @@ def test_resolve_returns_none_when_all_incompatible(tmp_path):
     result = fetcher.resolve("neuron")
     assert result.record is None
     assert len(result.rejected) == 1
+
+
+@responses.activate
+def test_zenodo_relevance_skips_offtopic_popular_hit(tmp_path):
+    # bestmatch can still surface an off-topic deposit first; the title-relevance gate
+    # must skip it and pick the deposit that actually matches the query.
+    payload = {
+        "hits": {
+            "hits": [
+                {
+                    "metadata": {"title": "mouse", "license": {"id": "cc-by-4.0"}},
+                    "files": [{"key": "m.svg", "links": {"self": "https://zenodo.org/m.svg"}}],
+                },
+                {
+                    "metadata": {"title": "Pyramidal Neuron", "license": {"id": "cc-by-4.0"}},
+                    "files": [{"key": "p.svg", "links": {"self": "https://zenodo.org/p.svg"}}],
+                },
+            ]
+        }
+    }
+    responses.add(responses.GET, ZENODO_API, json=payload, status=200)
+    responses.add(responses.GET, "https://zenodo.org/p.svg", body=b"<svg/>", status=200)
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[ZenodoBackend()])
+
+    result = fetcher.resolve("pyramidal neuron")
+    assert result.record is not None
+    assert result.record.title == "Pyramidal Neuron"  # not "mouse"
+    assert all(c.title != "mouse" for c in result.candidates)  # off-topic hit dropped
+
+
+@responses.activate
+def test_zenodo_relevance_returns_none_when_no_title_match(tmp_path):
+    # SciDraw lacks the term -> Zenodo returns a generic deposit -> filtered -> no false match.
+    payload = {
+        "hits": {
+            "hits": [
+                {
+                    "metadata": {"title": "Hepatocyte", "license": {"id": "cc-by-4.0"}},
+                    "files": [{"key": "h.svg", "links": {"self": "https://zenodo.org/h.svg"}}],
+                }
+            ]
+        }
+    }
+    responses.add(responses.GET, ZENODO_API, json=payload, status=200)
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[ZenodoBackend()])
+
+    result = fetcher.resolve("thalamus")
+    assert result.record is None
+    assert result.candidates == []  # off-topic deposit not offered as a candidate
 
 
 # --------------------------------------------------------------------------- #
@@ -122,6 +171,21 @@ def test_bioart_packaged_index_loads_and_matches():
     # The shipped catalog (no injected index) loads and matches a core neuro term.
     recs = BioartBackend().search("brain", 5, http=None)
     assert recs and all(r.license == "public-domain" for r in recs)
+
+
+def test_bioart_index_covers_neuroimaging_equipment():
+    # The expanded index adds neuroimaging hardware (MRI/PET/CT) for the user's domain.
+    backend = BioartBackend()
+    assert any("Neonatal MRI" in r.title for r in backend.search("neonatal mri", 5, http=None))
+    assert backend.search("PET scanner", 5, http=None)
+    assert backend.search("CT scanner", 5, http=None)
+
+
+def test_bioart_index_entries_are_wellformed():
+    # Every shipped entry has the fields the backend needs (guards against a bad edit).
+    for e in BioartBackend()._load_index():
+        assert isinstance(e["id"], int) and isinstance(e["file_id"], int)
+        assert e["title"] and isinstance(e.get("keywords", []), list)
 
 
 @responses.activate
