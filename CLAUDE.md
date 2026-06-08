@@ -120,7 +120,28 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
 - LLM: `claude-opus-4-8`; structured outputs + low `effort` (no temperature/budget_tokens).
   `ANTHROPIC_API_KEY` from env only.
 
-**Known follow-ups (not yet built):** `data_plot` has no CLI/MCP surface yet (library +
-`compose_data_plot` only); pie→bar auto-conversion still refuses rather than converts
-(possible now that the matplotlib backend exists); anatomical asset embedding is exercised
-only by the live path (placeholder path is what's unit-tested).
+**Done since the M0–M8 handoff (PR: plan-gaps-and-assets, 92 tests):**
+- **pie→bar auto-converts** in `style_guard` (recovers slice fractions from arc geometry,
+  clustering wedges by shared centre → sorted horizontal bar; refuses only when slice values
+  are unrecoverable). Closes the A7 gap.
+- **NIH BIOART backend** (`backends/bioart.py`) — public-domain human/clinical-anatomy vector
+  SVGs, the SciDraw coverage gap. BIOART has no stable API (search + downloads run through
+  per-deploy Next.js server actions), so it uses a curated package-shipped index
+  (`bioart_index.json`: id, resolved SVG file_id, title, keywords) + the one stable endpoint
+  `/api/bioarts/{id}/files/{file_id}`. Priority: Zenodo → BIOART → bioicons.
+- **`data_plot` + `compose_panels` now have CLI + MCP surfaces:** `scidraw plot data.json`,
+  `scidraw panels schemas.json`; MCP `make_data_plot`, `compose_panels_figure` (both local /
+  no-API).
+- **Raster is best-effort/lazy** (`compose._export_raster` no longer hard-imports cairosvg —
+  SVG always ships; PNG/PDF skipped-with-warning if libcairo is absent — matches the
+  SVG-first brief).
+- **macOS dev env:** `scripts/setup.sh` installs graphviz+cairo via brew; `compose._ensure_
+  cairo_discoverable()` points cffi at Homebrew's libcairo before the lazy cairosvg import,
+  so both the test suite and the real CLI/MCP emit PNG with no manual env (darwin-only no-op).
+- **Live asset access verified locally:** Zenodo (the cloud sandbox's blind spot), bioicons,
+  and BIOART all download real assets; `test_fetch_live.py` covers all three (auto-skip when
+  a host is unreachable).
+
+**Known follow-ups (not yet built):** Zenodo full-text relevance is coarse (can return a
+loosely-related deposit for a specific query); the BIOART curated index is a focused neuro
+seed (~14 items) — extend `bioart_index.json` for broader coverage.

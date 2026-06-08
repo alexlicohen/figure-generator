@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import responses
 
+from scidraw_agent.backends.bioart import FILE_API, BioartBackend
 from scidraw_agent.backends.zenodo import ZENODO_API, ZenodoBackend
 from scidraw_agent.config import Config
-from scidraw_agent.fetch import AssetFetcher
+from scidraw_agent.fetch import AssetFetcher, HttpClient
+from scidraw_agent.registry import license_ok
+
+_BIOART_INDEX = [
+    {"id": 60, "file_id": 628024, "title": "Brain Lateral", "keywords": ["brain", "cortex"]},
+    {"id": 424, "file_id": 633914, "title": "Pyramidal Neuron", "keywords": ["pyramidal neuron"]},
+]
 
 
 def _zenodo_payload():
@@ -90,3 +97,44 @@ def test_resolve_returns_none_when_all_incompatible(tmp_path):
     result = fetcher.resolve("neuron")
     assert result.record is None
     assert len(result.rejected) == 1
+
+
+# --------------------------------------------------------------------------- #
+# NIH BIOART backend (public-domain human/clinical anatomy)
+# --------------------------------------------------------------------------- #
+def test_bioart_token_match_builds_proxy_record():
+    backend = BioartBackend(index=_BIOART_INDEX)
+    # order-independent token match: "brain lateral" / "lateral brain" both hit id 60
+    recs = backend.search("lateral brain", 10, http=None)
+    assert [r.title for r in recs] == ["Brain Lateral"]
+    r = recs[0]
+    assert r.source_url == FILE_API.format(id=60, file_id=628024)
+    assert r.license == "public-domain" and license_ok(r.license)
+    assert r.backend == "bioart" and r.creators
+
+
+def test_bioart_no_match_returns_empty():
+    backend = BioartBackend(index=_BIOART_INDEX)
+    assert backend.search("thalamus", 10, http=None) == []  # degrade gracefully -> next backend
+
+
+def test_bioart_packaged_index_loads_and_matches():
+    # The shipped catalog (no injected index) loads and matches a core neuro term.
+    recs = BioartBackend().search("brain", 5, http=None)
+    assert recs and all(r.license == "public-domain" for r in recs)
+
+
+@responses.activate
+def test_bioart_resolve_downloads_and_records(tmp_path):
+    url = FILE_API.format(id=424, file_id=633914)
+    responses.add(responses.GET, url, body=b"<svg xmlns='http://www.w3.org/2000/svg'/>", status=200)
+    fetcher = AssetFetcher(
+        Config(cache_dir=tmp_path),
+        backends=[BioartBackend(index=_BIOART_INDEX)],
+        http=HttpClient(Config(cache_dir=tmp_path)),
+    )
+    result = fetcher.resolve("pyramidal neuron")
+    assert result.record is not None
+    assert result.record.license == "public-domain"
+    assert result.record.local_path
+    assert any(r.title == "Pyramidal Neuron" for r in fetcher.registry.records())

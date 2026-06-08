@@ -323,11 +323,45 @@ def _fix_rainbow_gradients(root, style: StyleSpec, report: StandardsReport, data
         )
 
 
-# -- BLOCK / abort ----------------------------------------------------------- #
+# -- pie -> bar (Cleveland & McGill: position/length beats angle/area) -------- #
+_MOVE_RE = re.compile(r"^\s*[Mm]\s*(-?[\d.]+)[\s,]+(-?[\d.]+)")
+# Point immediately before the (first) elliptical-arc command = the wedge's first rim point.
+_PREARC_RE = re.compile(r"(-?[\d.]+)[\s,]+(-?[\d.]+)\s*[Aa]")
+# A rx ry x-rot large-arc sweep x y  (flags may or may not be space-separated).
+_ARC_RE = re.compile(
+    r"[Aa]\s*[\d.]+[\s,]+[\d.]+[\s,]+[\d.eE+-]+[\s,]*([01])[\s,]*([01])[\s,]*"
+    r"(-?[\d.]+)[\s,]+(-?[\d.]+)"
+)
+
+
+def _arc_center(d: str) -> tuple[float, float] | None:
+    m = _MOVE_RE.match(d)
+    return (float(m.group(1)), float(m.group(2))) if m else None
+
+
+def _recover_wedge(d: str, cx: float, cy: float) -> tuple[float, float] | None:
+    """Return (fraction_of_circle, radius) for one wedge arc path, or None if unparseable."""
+    import math
+
+    pre = _PREARC_RE.search(d)
+    arc = _ARC_RE.search(d)
+    if not (pre and arc):
+        return None
+    p1 = (float(pre.group(1)), float(pre.group(2)))
+    large = arc.group(1) == "1"
+    p2 = (float(arc.group(3)), float(arc.group(4)))
+    a1 = math.atan2(p1[1] - cy, p1[0] - cx)
+    a2 = math.atan2(p2[1] - cy, p2[0] - cx)
+    raw = (a2 - a1) % (2 * math.pi)
+    swept = max(raw, 2 * math.pi - raw) if large else min(raw, 2 * math.pi - raw)
+    radius = math.hypot(p1[0] - cx, p1[1] - cy)
+    return swept / (2 * math.pi), radius
+
+
 def _check_pie(root, style: StyleSpec, report: StandardsReport, blocked: list) -> None:
-    # Explicit hint OR >=3 arc-containing paths sharing an identical start point (wedges).
+    # Explicit hint OR >=3 arc paths sharing a centre point (wedges of one pie).
     explicit = False
-    start_counts: dict[str, int] = {}
+    by_center: dict[tuple[float, float], list] = {}
     for el in root.iter():
         ident = ((el.get("class") or "") + " " + (el.get("id") or "")).lower()
         if any(k in ident for k in ("pie", "donut", "wedge")):
@@ -335,11 +369,14 @@ def _check_pie(root, style: StyleSpec, report: StandardsReport, blocked: list) -
         if _local(el) == "path":
             d = el.get("d") or ""
             if "A" in d or "a" in d:
-                head = d.strip()[:24]
-                start_counts[head] = start_counts.get(head, 0) + 1
-    wedge_cluster = any(n >= 3 for n in start_counts.values())
-    if not (explicit or wedge_cluster):
+                c = _arc_center(d)
+                if c is not None:
+                    by_center.setdefault((round(c[0], 1), round(c[1], 1)), []).append(el)
+    cluster = max(by_center.items(), key=lambda kv: len(kv[1]), default=(None, []))
+    wedges = cluster[1] if len(cluster[1]) >= 3 else []
+    if not (explicit or wedges):
         return
+
     if style.is_overridden(RuleId.NO_PIE):
         report.add(
             _action(
@@ -347,14 +384,95 @@ def _check_pie(root, style: StyleSpec, report: StandardsReport, blocked: list) -
             )
         )
         return
+
+    # Recover per-wedge fractions from arc geometry; convert to a sorted horizontal bar.
+    cx, cy = cluster[0] if cluster[0] is not None else (0.0, 0.0)
+    recovered = []
+    for el in wedges:
+        rec = _recover_wedge(el.get("d") or "", cx, cy)
+        if rec is not None:
+            fill = (el.get("fill") or _parse_style(el.get("style")).get("fill") or "").strip()
+            recovered.append((rec[0], rec[1], fill, el))
+    if len(recovered) >= 2:
+        _convert_pie_to_bar(root, cx, cy, recovered, style)
+        report.add(
+            _action(
+                RuleId.NO_PIE,
+                auto_fixed=True,
+                message=f"Pie/donut auto-converted to a sorted horizontal bar "
+                f"({len(recovered)} slices) — position/length encoding.",
+            )
+        )
+        return
+
+    # Detected a pie but could not recover slice values (e.g. non-arc wedges) -> refuse.
     blocked.append(
         _action(
             RuleId.NO_PIE,
             auto_fixed=False,
-            message="Pie/donut detected: refuse. Use a sorted bar (position/length encoding). "
-            "Auto-conversion to bar requires the data_plot module.",
+            message="Pie/donut detected but slice values not recoverable: refuse. "
+            "Use a sorted bar (position/length encoding).",
         )
     )
+
+
+def _convert_pie_to_bar(root, cx, cy, recovered, style: StyleSpec) -> None:
+    """Replace wedge paths with a sorted (descending) horizontal bar chart in their place."""
+    radius = max((r for _, r, _, _ in recovered), default=40.0) or 40.0
+    total = sum(f for f, _, _, _ in recovered) or 1.0
+
+    # remove the wedge paths and any text that sat on top of the pie (slice labels)
+    parent = None
+    for _, _, _, el in recovered:
+        p = el.getparent()
+        if parent is None:
+            parent = p
+        if p is not None:
+            p.remove(el)
+    for txt in list(root.iter()):
+        if _local(txt) != "text":
+            continue
+        tx, ty = _num(txt.get("x")), _num(txt.get("y"))
+        if tx is None or ty is None:
+            continue
+        if abs(tx - cx) <= radius and abs(ty - cy) <= radius:
+            tp = txt.getparent()
+            if tp is not None:
+                tp.remove(txt)
+    if parent is None:
+        parent = root
+
+    # layout: bars fill the pie's bounding box, sorted largest-first
+    slices = sorted(recovered, key=lambda t: t[0], reverse=True)
+    x0, top = cx - radius, cy - radius
+    height = 2 * radius
+    bar_max = 1.4 * radius  # leave room for the % label to the right
+    row_h = height / len(slices)
+    bar_h = row_h * 0.62
+    nsg = "{http://www.w3.org/2000/svg}"
+    grp = etree.SubElement(parent, f"{nsg}g")
+    grp.set("class", "pie-converted-bar")
+    for i, (frac, _r, fill, _el) in enumerate(slices):
+        pct = 100.0 * frac / total
+        y = top + i * row_h + (row_h - bar_h) / 2
+        if fill and fill.lower() not in _WHITE:
+            color = fill
+        else:
+            color = palette.CATEGORICAL_ORDER[i % len(palette.CATEGORICAL_ORDER)]
+        biggest = max(s[0] for s in slices)
+        rect = etree.SubElement(grp, f"{nsg}rect")
+        rect.set("x", f"{x0:g}")
+        rect.set("y", f"{y:g}")
+        rect.set("width", f"{bar_max * frac / biggest:g}")
+        rect.set("height", f"{bar_h:g}")
+        rect.set("fill", color)
+        label = etree.SubElement(grp, f"{nsg}text")
+        label.set("x", f"{x0 + 3:g}")
+        label.set("y", f"{y + bar_h * 0.5 + style.default_font_px * 0.35:g}")
+        label.set("font-size", f"{style.default_font_px:g}")
+        label.set("font-family", style.font_family)
+        label.set("fill", "#000000")
+        label.text = f"{pct:.0f}%"
 
 
 def _check_fonts(root, style: StyleSpec, report: StandardsReport, blocked: list) -> None:

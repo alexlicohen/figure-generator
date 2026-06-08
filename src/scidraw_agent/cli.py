@@ -7,15 +7,17 @@ scidraw lint figure.svg --allow-override no_pie
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
 
-from .compose import compose_figure
+from .compose import compose_data_plot, compose_figure, compose_panels
 from .config import load_config
 from .extract import NeuroDeclineError
 from .fetch import AssetFetcher
-from .models import FigureSchema
+from .generators.data_plot import DynamitePlotError
+from .models import FigureSchema, PlotRequest
 from .run import figure_from_file, figure_from_text
 from .standards import StyleGuardBlocked, enforce
 from .theme import StyleSpec
@@ -72,6 +74,56 @@ def ingest(
     except NeuroDeclineError as e:
         typer.secho(str(e), fg=typer.colors.RED)
         raise typer.Exit(code=2) from None
+    _emit(manifest)
+
+
+@app.command()
+def plot(
+    data_path: Path,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
+) -> None:
+    """Render a distribution plot from a PlotRequest JSON ({"groups": {name: [values]}, ...}).
+
+    Enforces distribution rigor (no dynamite bars, geom-by-sample-size, SuperPlots) via the
+    same Design Standards Engine. No Claude API call.
+    """
+    req = PlotRequest.model_validate_json(data_path.read_text())
+    try:
+        manifest = compose_data_plot(
+            req, out, config=load_config(), style=_style(journal, allow_override)
+        )
+    except DynamitePlotError as e:
+        typer.secho(f"BLOCK no_dynamite: {e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    _emit(manifest)
+
+
+@app.command()
+def panels(
+    schemas_path: Path,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
+    assets: bool = typer.Option(True, help="Fetch CC assets for anatomical panels."),
+) -> None:
+    """Tile a JSON list of FigureSchema objects into one multi-panel figure (A/B/C ...).
+
+    A shared palette keeps each group's colour stable across panels. No Claude API call.
+    """
+    raw = json.loads(schemas_path.read_text())
+    schemas = [FigureSchema.model_validate(s) for s in raw]
+    config = load_config()
+    fetcher = AssetFetcher(config) if assets else None
+    try:
+        manifest = compose_panels(
+            schemas, out, config=config, style=_style(journal, allow_override), fetcher=fetcher
+        )
+    except StyleGuardBlocked as e:
+        for a in e.actions:
+            typer.secho(f"BLOCK {a.rule_id}: {a.message}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
     _emit(manifest)
 
 

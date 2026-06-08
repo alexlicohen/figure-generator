@@ -92,7 +92,8 @@ RULES: dict[RuleId, Rule] = {
     RuleId.NO_PIE: Rule(
         RuleId.NO_PIE,
         StandardsTier.BLOCK,
-        "Pie/donut chart detected — refuse (use position/length encoding, e.g. a bar).",
+        "Pie/donut auto-converted to a sorted horizontal bar (position/length encoding); "
+        "refused only when slice values cannot be recovered.",
         "https://www.informationvisuals.com/information-design-theory/elementary-perceptual-tasks",
     ),
     RuleId.NO_DYNAMITE: Rule(

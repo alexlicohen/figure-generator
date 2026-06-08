@@ -37,7 +37,7 @@ def test_lint_figure_reports_fixes():
     assert data["blocked"] == []
 
 
-def test_lint_figure_blocks_pie():
+def test_lint_figure_converts_pie():
     wedges = "".join(
         f'<path d="M50,50 L90,50 A40,40 0 0 1 {x},{y} Z" fill="#0072B2"/>'
         for x, y in [(70, 86), (20, 70), (40, 18)]
@@ -47,7 +47,8 @@ def test_lint_figure_blocks_pie():
         f'viewBox="0 0 100 100">{wedges}</svg>'
     )
     data = _call("lint_figure", {"svg": svg})
-    assert any(a["rule_id"] == "no_pie" for a in data["blocked"])
+    assert data["blocked"] == []
+    assert any(a["rule_id"] == "no_pie" for a in data["report"]["applied_fixes"])
 
 
 def test_compose_figure_returns_svg_path(tmp_path):
@@ -66,6 +67,40 @@ def test_compose_figure_returns_svg_path(tmp_path):
 def test_list_rules_includes_catalog():
     data = _call("list_rules", {})
     assert "no_pie" in data and data["no_pie"]["tier"] == "block"
+
+
+def test_make_data_plot_returns_svg(tmp_path):
+    req = {"groups": {"control": [1, 2, 3, 2, 1, 2.5], "treated": [3, 4, 5, 4, 3, 4.5]}}
+    data = _call("make_data_plot", {"request": req, "out_dir": str(tmp_path / "out")})
+    assert data["svg_path"].endswith("figure.svg")
+    assert (tmp_path / "out" / "figure.svg").exists()
+    ids = [a["rule_id"] for a in data["standards"]["applied_fixes"]]
+    assert "distribution_geom" in ids
+
+
+def test_make_data_plot_blocks_dynamite(tmp_path):
+    req = {"groups": {"a": [1, 2, 3], "b": [4, 5, 6]}, "force_kind": "bar"}
+    data = _call("make_data_plot", {"request": req, "out_dir": str(tmp_path / "out")})
+    assert any(b["rule_id"] == "no_dynamite" for b in data["blocked"])
+
+
+def test_compose_panels_figure_returns_svg(tmp_path):
+    schemas = [
+        FigureSchema(
+            figure_type=FigureType.MECHANISTIC_CIRCUIT,
+            entities=[Entity(id="a", label="Patients", group="patients")],
+        ).model_dump(),
+        FigureSchema(
+            figure_type=FigureType.MECHANISTIC_CIRCUIT,
+            entities=[Entity(id="b", label="Controls", group="control")],
+        ).model_dump(),
+    ]
+    data = _call(
+        "compose_panels_figure",
+        {"schemas": schemas, "out_dir": str(tmp_path / "out"), "use_assets": False},
+    )
+    assert data["svg_path"].endswith("figure.svg")
+    assert (tmp_path / "out" / "figure.svg").exists()
 
 
 def test_check_decline_local():

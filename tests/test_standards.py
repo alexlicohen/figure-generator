@@ -107,24 +107,38 @@ def test_clamps_hairline_strokes():
     assert any(a.rule_id == "min_stroke" for a in report.applied_fixes)
 
 
-def test_pie_detection_aborts():
-    wedges = "".join(
+def _pie_wedges() -> str:
+    return "".join(
         f'<path d="M50,50 L90,50 A40,40 0 0 1 {x},{y} Z" fill="#0072B2"/>'
         for x, y in [(70, 86), (20, 70), (40, 18)]
     )
-    with pytest.raises(StyleGuardBlocked) as exc:
-        enforce(_wrap(wedges))
-    assert any(a.rule_id == "no_pie" for a in exc.value.actions)
 
 
-def test_pie_override_does_not_abort():
-    wedges = "".join(
-        f'<path d="M50,50 L90,50 A40,40 0 0 1 {x},{y} Z" fill="#0072B2"/>'
-        for x, y in [(70, 86), (20, 70), (40, 18)]
-    )
-    out, report = enforce(_wrap(wedges), StyleSpec(allow_overrides=["no_pie"]))
-    assert out  # no exception
+def test_pie_auto_converts_to_sorted_bar():
+    # A7: pie/donut -> auto-convert to a sorted horizontal bar (position/length encoding).
+    out, report = enforce(_wrap(_pie_wedges()))
+    root = _parse(out)
+    arcs = [p for p in _findall(root, "path") if "A" in (p.get("d") or "")]
+    assert not arcs  # wedge arcs replaced
+    assert _findall(root, "rect")  # bars drawn
+    assert any(a.rule_id == "no_pie" and a.auto_fixed for a in report.applied_fixes)
+
+
+def test_pie_override_keeps_pie():
+    out, report = enforce(_wrap(_pie_wedges()), StyleSpec(allow_overrides=["no_pie"]))
+    root = _parse(out)
+    arcs = [p for p in _findall(root, "path") if "A" in (p.get("d") or "")]
+    assert arcs  # wedges kept untouched
     assert any(a.rule_id == "no_pie" for a in report.overrides)
+
+
+def test_pie_unrecoverable_values_refuses():
+    # Detected as a pie (explicit hint) but no parseable arc geometry -> cannot recover
+    # slice values, so refuse rather than fabricate a bar.
+    svg = _wrap('<g class="pie"><rect x="10" y="10" width="20" height="20" fill="#0072B2"/></g>')
+    with pytest.raises(StyleGuardBlocked) as exc:
+        enforce(svg)
+    assert any(a.rule_id == "no_pie" for a in exc.value.actions)
 
 
 def test_sub_minimum_font_aborts():

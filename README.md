@@ -4,8 +4,9 @@ Prompt-driven scientific **schematic** generator with a built-in **Design Standa
 
 Turn a text prompt — or an ingested paper Methods section / grant Specific Aims — into an
 **editable vector (SVG)** scientific schematic. Claude (Anthropic API) extracts a structured
-figure description; open CC-licensed repositories (SciDraw via Zenodo, with a bioicons
-fallback) supply organic shapes; generators draw the scaffold; and every output passes
+figure description; open CC-licensed repositories supply organic shapes (SciDraw via Zenodo
+first, then **NIH BIOART** for public-domain human/clinical anatomy, then a bioicons
+fallback); generators draw the scaffold; and every output passes
 through a standards-enforcement layer that silently applies publication and
 visual-perception gold standards.
 
@@ -48,6 +49,12 @@ scidraw prompt "corticospinal projection from M1 to spinal cord, with local inhi
 # from a paper / grant
 scidraw ingest paper.pdf --section methods --out fig
 scidraw ingest aims.txt  --section aims    --out fig
+
+# distribution plot (no Claude call) — enforces no-dynamite / geom-by-n / SuperPlots
+scidraw plot data.json --out fig            # data.json: {"groups": {"ctrl": [...], "tx": [...]}}
+
+# multi-panel figure from a JSON list of schemas (shared palette, A/B/C letters)
+scidraw panels schemas.json --out fig
 
 # lint any SVG against the Design Standards Engine
 scidraw lint figure.svg
@@ -93,8 +100,11 @@ Then, inside Claude Code in this repo, just ask in natural language — Claude c
 > "Lint ./fig/figure.svg."
 
 **Tools exposed:** `make_figure` (text → figure on disk, full pipeline), `make_figure_from_file`
-(.pdf/.txt/.md → figure), `schema_from_text`, `find_asset`, `compose_figure`, `lint_figure`,
-`list_rules`. `make_figure*` fetch real SciDraw/Zenodo assets by default (`use_assets`).
+(.pdf/.txt/.md → figure), `schema_from_text`, `find_asset`, `compose_figure`,
+`make_data_plot` (distribution plot from a PlotRequest), `compose_panels_figure` (multi-panel
+from several schemas), `lint_figure`, `list_rules`. `make_figure*`/`compose_*` fetch real
+SciDraw/Zenodo + NIH BIOART assets by default (`use_assets`); `make_data_plot` and the local
+tools never call the Anthropic API.
 
 Requires `ANTHROPIC_API_KEY` in the environment Claude Code launches from.
 
@@ -120,19 +130,21 @@ runs on the final SVG of every generator:
 - **Silent defaults** — Okabe-Ito categorical colour, Crameri colormaps (`vik` signed,
   `batlow` magnitude, `vikO` cyclic), stripped shadows/3D, removed frames, demoted
   gridlines, ≥0.25 pt strokes, text kept as text, journal sizing (Nature/Cell/Science/eLife).
-- **BLOCK rules (strict, with a logged escape hatch)** — pie→refuse, jet/rainbow→Crameri,
-  raw RGB→Okabe-Ito, red/green→accessible pair, sub-5 pt font→abort, neuro decline-triggers.
-  A documented `--allow-override <rule>` downgrades a BLOCK to a manifest-logged entry.
+- **BLOCK rules (strict, with a logged escape hatch)** — pie→**sorted bar** (auto-converted),
+  jet/rainbow→Crameri, raw RGB→Okabe-Ito, red/green→accessible pair, sub-5 pt font→abort,
+  neuro decline-triggers. A documented `--allow-override <rule>` downgrades a BLOCK to a
+  manifest-logged entry.
 
 See `docs/standards.md` for the full rule catalog with sources.
 
 ## Coverage honesty
 
-SciDraw skews toward rodent / systems neuroscience; human clinical neuroanatomy is thin.
-When no compatible asset is found, the figure degrades gracefully to a **labelled
-placeholder** plus a warning, and (for brain/anatomy) points you at the real-render tools
-above. Imported assets that are not CC-BY-compatible (NC / ND / SA / unknown) are **flagged
-and excluded** by the license ledger.
+SciDraw skews toward rodent / systems neuroscience; **NIH BIOART** (public domain) backfills
+some human/clinical anatomy (brain, neuron types, glia, blood-brain barrier), but coverage
+is still partial. When no compatible asset is found, the figure degrades gracefully to a
+**labelled placeholder** plus a warning, and (for brain/anatomy) points you at the
+real-render tools above. Imported assets that are not CC-BY-compatible (NC / ND / SA /
+unknown) are **flagged and excluded** by the license ledger; NIH BIOART is public domain.
 
 ## Privacy / local-first
 
