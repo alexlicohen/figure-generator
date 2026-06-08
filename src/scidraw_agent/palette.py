@@ -40,6 +40,19 @@ CATEGORICAL_ORDER: list[str] = [
     "#F0E442",  # yellow
 ]
 
+# Cohen-lab house palette: a muted, cohesive system built around the steel-blue / warm-orange
+# pairing seen across the lab's figures (control/NT = blue, patient = orange). Blue+orange is
+# colourblind-safe; the secondary hues are kept muted so accents read as a designed set.
+COHEN_CATEGORICAL: list[str] = [
+    "#2F5C8A",  # steel blue   (primary accent / control)
+    "#D97A1E",  # warm orange  (secondary / patient)
+    "#3E8E7E",  # muted teal
+    "#8E4B6E",  # muted plum
+    "#5B6B7B",  # slate
+    "#A8862E",  # muted gold
+]
+COHEN_INK = "#222831"  # near-black for outlines / text
+
 # Muted grey reserved for baselines/controls; saturated colour is for emphasis.
 BASELINE_GREY = "#999999"
 BASELINE_GROUP_NAMES = {
@@ -246,16 +259,21 @@ class GroupStyle:
 
 @dataclass
 class PaletteRegistry:
-    """Assigns and remembers a stable (colour, shape, linestyle) per group."""
+    """Assigns and remembers a stable (colour, shape, linestyle) per group.
+
+    ``colors`` overrides the categorical colour order (e.g. a lab house palette); it defaults
+    to the Okabe-Ito order so existing behaviour is unchanged.
+    """
 
     mapping: dict[str, GroupStyle] = field(default_factory=dict)
+    colors: list[str] = field(default_factory=lambda: list(CATEGORICAL_ORDER))
     _next: int = 0
 
     def assign(self, group: str) -> GroupStyle:
         """Return the stable style for ``group``, allocating a new slot if first seen.
 
         Baseline/control groups get muted grey; every other group gets the next
-        distinguishable Okabe-Ito colour. Existing groups are never recoloured.
+        distinguishable categorical colour. Existing groups are never recoloured.
         """
         if group in self.mapping:
             return self.mapping[group]
@@ -264,8 +282,9 @@ class PaletteRegistry:
         else:
             idx = self._next
             self._next += 1
+            colors = self.colors or list(CATEGORICAL_ORDER)
             style = GroupStyle(
-                CATEGORICAL_ORDER[idx % len(CATEGORICAL_ORDER)],
+                colors[idx % len(colors)],
                 SHAPE_CYCLE[idx % len(SHAPE_CYCLE)],
                 LINESTYLE_CYCLE[idx % len(LINESTYLE_CYCLE)],
             )

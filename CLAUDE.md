@@ -169,6 +169,14 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
 - **Anatomical contrast fix** — `anatomical._boost_contrast` darkens pale *achromatic* asset
   fills/strokes (e.g. SciDraw's all-pale-grey pyramidal neuron that vanished on white) while
   sparing light *coloured* fills (a diagram's pale-teal regions). Light+low-channel-spread only.
+- **House styles** — `StyleSpec.node_style` ("filled" default / "outline" = white cards with
+  coloured outlines) honoured by the pipeline + circuit generators; `StyleSpec.asset_style`
+  ("native"/"grayscale"/"tint") normalises fetched assets into one coherent set
+  (`anatomical._normalize_asset`, now also rewrites `<style>` CSS-class fills). `theme.cohen_lab()`
+  is a design-focused preset (muted steel-blue/orange `palette.COHEN_CATEGORICAL`, outline cards,
+  grayscale assets) learned from the lab's published figures. Exposed via CLI
+  `compose-schema --style cohen` and MCP `compose_figure(house_style="cohen")`. Raster export now
+  forces a white background (`compose._export_raster` background_color="white").
 - **Paste-ready credits** (`attribution.py`) — compose writes `figure.credits.txt` + a `credits`
   block in the manifest. Default `legend_line` is the **compact** convention (grouped by
   source+license, titles dropped, authors as initials — CC's "reasonable to the medium");

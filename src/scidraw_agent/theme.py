@@ -62,8 +62,22 @@ class StyleSpec:
     strip_shadows: bool = True
     strip_decorative_gradients: bool = False  # conservative: keep asset shading by default
 
+    # Node rendering for flow/circuit/study-design generators:
+    #   "filled"  saturated palette fill + contrast text (default)
+    #   "outline" white card + coloured outline + ink text (clean, "designed" — Cohen-lab look)
+    node_style: str = "filled"
+    node_ink: str = "#333333"  # outline/text ink for node_style="outline"
+
     # Typography (pt; converted to px via PT_TO_PX for SVG checks)
     font_family: str = "Arial, Helvetica, sans-serif"
+
+    # Organic-asset house style: how fetched assets (neuron, brain, …) are recoloured so a
+    # multi-asset figure reads as one coherent set instead of a grab-bag of source styles.
+    #   "native"    keep each asset's own colours (only darken invisibly-pale achromatic ink)
+    #   "grayscale" per-asset contrast-normalised neutral grey duotone (coherent monochrome)
+    #   "tint"      same, in a single house ink (`asset_tint`) — a one-colour scientific plate
+    asset_style: str = "native"
+    asset_tint: str = "#37576B"  # muted slate-blue house ink for asset_style="tint"
 
     # Escape hatch: rule ids the user has explicitly opted to override. A honoured
     # override downgrades a BLOCK to a logged entry instead of aborting/auto-converting.
@@ -87,6 +101,23 @@ class StyleSpec:
 
     def is_overridden(self, rule_id: str) -> bool:
         return rule_id in self.allow_overrides
+
+
+def cohen_lab(journal: str = "nature") -> StyleSpec:
+    """The Cohen-lab house style: a design-focused elevation of the lab's figure conventions.
+
+    Muted steel-blue / warm-orange categorical palette (control=blue, patient=orange); flow &
+    circuit nodes as clean white cards with coloured outlines (the lab's white-box look,
+    elevated); fetched anatomy normalised to a neutral grey so the accent colours carry the
+    figure. Layered on a journal preset so sizing/font floors still apply.
+    """
+    return StyleSpec(
+        journal=journal,
+        categorical=list(palette.COHEN_CATEGORICAL),
+        node_style="outline",
+        node_ink=palette.COHEN_INK,
+        asset_style="grayscale",
+    )
 
 
 def mpl_rcparams(style: StyleSpec) -> dict:

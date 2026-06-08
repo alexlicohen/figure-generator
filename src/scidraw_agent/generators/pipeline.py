@@ -36,6 +36,8 @@ class PipelineGenerator:
         *,
         fetcher: AssetFetcher | None = None,
     ) -> GeneratorResult:
+        outline = getattr(style, "node_style", "filled") == "outline"
+        ink = getattr(style, "node_ink", "#333333")
         g = graphviz.Digraph("figure")
         g.attr(rankdir="TB", bgcolor="white", nodesep="0.35", ranksep="0.5")
         g.attr(
@@ -44,22 +46,21 @@ class PipelineGenerator:
             style="filled,rounded",
             fontname="Arial",
             fontsize="12",
-            penwidth="1.2",
-            color="#333333",
-            margin="0.18,0.10",
+            penwidth="1.8" if outline else "1.2",
+            color=ink,
+            margin="0.18,0.12",
         )
         g.attr(
-            "edge",
-            color="#333333",
-            arrowsize="0.8",
-            penwidth="1.2",
-            fontname="Arial",
-            fontsize="11",
+            "edge", color=ink, arrowsize="0.8", penwidth="1.2", fontname="Arial", fontsize="11"
         )
 
         for e in schema.entities:
-            fill = palette.assign(e.group or e.id).color
-            g.node(e.id, e.label, fillcolor=fill, fontcolor=_font_color(fill))
+            accent = palette.assign(e.group or e.id).color
+            if outline:
+                # white card, coloured outline, ink text — the lab's white-box look, elevated
+                g.node(e.id, e.label, fillcolor="white", color=accent, fontcolor=ink)
+            else:
+                g.node(e.id, e.label, fillcolor=accent, fontcolor=_font_color(accent))
 
         for edge in schema.edges:
             if edge.source in schema.entity_ids() and edge.target in schema.entity_ids():

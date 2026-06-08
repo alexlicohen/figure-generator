@@ -129,13 +129,18 @@ def compose_figure(
     journal: str = "nature",
     allow_overrides: list[str] | None = None,
     use_assets: bool = True,
+    house_style: str = "default",
 ) -> dict:
     """Render a FigureSchema -> compliant figure.svg + raster + manifest (local, no API).
 
     This is the subscription-mode render entry point: you (Claude Code) supply the schema.
     ``use_assets`` fetches CC-licensed organic assets for anatomical figures.
+    ``house_style="cohen"`` applies the Cohen-lab look (outline cards, lab palette, grey assets).
     """
-    style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
+    from .theme import cohen_lab
+
+    style = cohen_lab(journal) if house_style == "cohen" else StyleSpec(journal=journal)
+    style.allow_overrides = allow_overrides or []
     config = load_config()
     fetcher = AssetFetcher(config) if use_assets else None
     try:
