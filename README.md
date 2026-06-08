@@ -57,6 +57,9 @@ scidraw plot data.json --out fig            # data.json: {"groups": {"ctrl": [..
 # multi-panel figure from a JSON list of schemas (shared palette, A/B/C letters)
 scidraw panels schemas.json --out fig
 
+# grant graphical abstract (structural, no image models) — image slots take your own renders
+scidraw abstract abstract.json --out fig --style cohen
+
 # lint any SVG against the Design Standards Engine
 scidraw lint figure.svg
 scidraw lint figure.svg --allow-override no_pie   # documented per-figure escape hatch

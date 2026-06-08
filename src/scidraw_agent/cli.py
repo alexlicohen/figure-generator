@@ -12,12 +12,17 @@ from pathlib import Path
 
 import typer
 
-from .compose import compose_data_plot, compose_figure, compose_panels
+from .compose import (
+    compose_data_plot,
+    compose_figure,
+    compose_graphical_abstract,
+    compose_panels,
+)
 from .config import load_config
 from .extract import NeuroDeclineError
 from .fetch import AssetFetcher
 from .generators.data_plot import DynamitePlotError
-from .models import FigureSchema, PlotRequest
+from .models import FigureSchema, GraphicalAbstract, PlotRequest
 from .run import figure_from_file, figure_from_text
 from .standards import StyleGuardBlocked, enforce
 from .theme import StyleSpec, cohen_lab
@@ -134,6 +139,28 @@ def panels(
         for a in e.actions:
             typer.secho(f"BLOCK {a.rule_id}: {a.message}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
+    _emit(manifest)
+
+
+@app.command()
+def abstract(
+    spec_path: Path,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    style: str = typer.Option("cohen", help="House style: 'default' or 'cohen'."),
+    assets: bool = typer.Option(True, help="Fetch CC assets for unfilled image slots."),
+) -> None:
+    """Render a grant graphical abstract from a GraphicalAbstract JSON (no Claude API call).
+
+    The design is generated structurally; image slots take your own render paths (preferred)
+    or a CC asset_query (fallback) — never an image model. Defaults to the Cohen house style.
+    """
+    ga = GraphicalAbstract.model_validate_json(spec_path.read_text())
+    config = load_config()
+    fetcher = AssetFetcher(config) if assets else None
+    manifest = compose_graphical_abstract(
+        ga, out, config=config, style=_style(journal, None, style), fetcher=fetcher
+    )
     _emit(manifest)
 
 

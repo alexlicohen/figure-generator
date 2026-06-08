@@ -124,6 +124,58 @@ class PlotRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Graphical abstract (structural composition — no image models)
+# --------------------------------------------------------------------------- #
+class GAStep(BaseModel):
+    """A numbered step inside a track."""
+
+    head: str
+    detail: str = ""
+
+
+class GAImage(BaseModel):
+    """An image slot. A real render (``path``, PNG/SVG) is preferred and NEVER generated; a
+    CC ``asset_query`` is the fallback; absent both, a labelled placeholder is drawn."""
+
+    path: str | None = None
+    asset_query: str | None = None
+    caption: str = ""
+
+
+class GAItem(BaseModel):
+    """One element in a section row: a titled card, an image, or a track of numbered steps."""
+
+    kind: str = "card"  # "card" | "image" | "track"
+    title: str = ""
+    lines: list[str] = Field(default_factory=list)
+    steps: list[GAStep] = Field(default_factory=list)
+    image: GAImage | None = None
+    accent: str | None = None  # explicit accent; else cycles the house palette
+    weight: float = 1.0  # relative width within the row
+
+
+class GASection(BaseModel):
+    """A titled band holding a left-to-right row of items joined by an optional connector."""
+
+    title: str
+    items: list[GAItem] = Field(default_factory=list)
+    connector: str = "none"  # between items: "arrow" | "plus" | "none"
+
+
+class GraphicalAbstract(BaseModel):
+    """A structural grant graphical abstract: stacked titled sections of cards/images/tracks.
+
+    The design (bands, cards, tracks, connectors, colour system) is generated; images are
+    slotted from real renders or CC assets — never image-model output.
+    """
+
+    title: str = ""
+    sections: list[GASection] = Field(default_factory=list)
+    caption_seed: str = ""
+    width: float = 1200.0
+
+
+# --------------------------------------------------------------------------- #
 # Asset provenance
 # --------------------------------------------------------------------------- #
 class AssetRecord(BaseModel):
