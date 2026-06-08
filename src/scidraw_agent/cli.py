@@ -17,12 +17,13 @@ from .compose import (
     compose_figure,
     compose_graphical_abstract,
     compose_panels,
+    compose_scatter,
 )
 from .config import load_config
 from .extract import NeuroDeclineError
 from .fetch import AssetFetcher
 from .generators.data_plot import DynamitePlotError
-from .models import FigureSchema, GraphicalAbstract, PlotRequest
+from .models import FigureSchema, GraphicalAbstract, PlotRequest, ScatterRequest
 from .run import figure_from_file, figure_from_text
 from .standards import StyleGuardBlocked, enforce
 from .theme import StyleSpec, cohen_lab
@@ -35,6 +36,33 @@ def _style(journal: str, allow_override: list[str] | None, style: str = "default
     base = cohen_lab(journal) if style == "cohen" else StyleSpec(journal=journal)
     base.allow_overrides = list(allow_override or [])
     return base
+
+
+def _export_kwargs(formats: list[str] | None, width: str) -> dict:
+    """Translate --format/--width CLI options into compose_* export keyword arguments."""
+    fmts = {f.lower() for f in (formats or ["png"])}
+    return {
+        "export_png": "png" in fmts,
+        "export_pdf": "pdf" in fmts,
+        "export_eps": "eps" in fmts,
+        "export_tiff": "tiff" in fmts,
+        "figure_width": width,
+    }
+
+
+def _emit_decline(e: NeuroDeclineError, journal: str) -> None:
+    """Print the decline reason, then a ready-to-run render snippet instead of just refusing."""
+    from .render_handoff import render_snippet
+
+    typer.secho(str(e), fg=typer.colors.RED)
+    handoff = render_snippet(e.matched, style=_style(journal, None))
+    typer.secho(
+        f"\n# Head start — {handoff.tool} {handoff.kind} render (standards baked in):",
+        fg=typer.colors.GREEN,
+    )
+    for n in handoff.notes:
+        typer.secho(f"# - {n}", fg=typer.colors.CYAN)
+    typer.echo("\n" + handoff.code)
 
 
 def _emit(manifest) -> None:
@@ -68,7 +96,7 @@ def prompt(
             text, out, config=load_config(), style=_style(journal, allow_override)
         )
     except NeuroDeclineError as e:
-        typer.secho(str(e), fg=typer.colors.RED)
+        _emit_decline(e, journal)
         raise typer.Exit(code=2) from None
     _emit(manifest)
 
@@ -87,7 +115,7 @@ def ingest(
             path, out, config=load_config(), style=_style(journal, allow_override), section=section
         )
     except NeuroDeclineError as e:
-        typer.secho(str(e), fg=typer.colors.RED)
+        _emit_decline(e, journal)
         raise typer.Exit(code=2) from None
     _emit(manifest)
 
@@ -98,20 +126,50 @@ def plot(
     out: Path = typer.Option(Path("figure_out"), help="Output directory."),
     journal: str = typer.Option("nature", help="Journal preset."),
     allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
 ) -> None:
     """Render a distribution plot from a PlotRequest JSON ({"groups": {name: [values]}, ...}).
 
     Enforces distribution rigor (no dynamite bars, geom-by-sample-size, SuperPlots) via the
-    same Design Standards Engine. No Claude API call.
+    same Design Standards Engine. No Claude API call. ``--format`` adds PDF/EPS/TIFF (TIFF is
+    CMYK for CMYK journals); ``--width single|double`` sizes to the journal column in mm.
     """
     req = PlotRequest.model_validate_json(data_path.read_text())
     try:
         manifest = compose_data_plot(
-            req, out, config=load_config(), style=_style(journal, allow_override)
+            req, out, config=load_config(), style=_style(journal, allow_override),
+            **_export_kwargs(fmt, width),
         )
     except DynamitePlotError as e:
         typer.secho(f"BLOCK no_dynamite: {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
+    _emit(manifest)
+
+
+@app.command()
+def scatter(
+    data_path: Path,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    style: str = typer.Option("default", help="House style: 'default' or 'cohen'."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
+) -> None:
+    """Render a scatter/correlation plot from a ScatterRequest JSON ({"x": [...], "y": [...], ...}).
+
+    With "fit": "linear" an OLS line + 95% band are drawn and Pearson r/p/n are reported. No
+    Claude API call. Distribution rigor (text-as-text, floors) is enforced by the same engine.
+    """
+    req = ScatterRequest.model_validate_json(data_path.read_text())
+    manifest = compose_scatter(
+        req, out, config=load_config(), style=_style(journal, None, style),
+        **_export_kwargs(fmt, width),
+    )
     _emit(manifest)
 
 
@@ -122,6 +180,10 @@ def panels(
     journal: str = typer.Option("nature", help="Journal preset."),
     allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
     assets: bool = typer.Option(True, help="Fetch CC assets for anatomical panels."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
 ) -> None:
     """Tile a JSON list of FigureSchema objects into one multi-panel figure (A/B/C ...).
 
@@ -133,7 +195,8 @@ def panels(
     fetcher = AssetFetcher(config) if assets else None
     try:
         manifest = compose_panels(
-            schemas, out, config=config, style=_style(journal, allow_override), fetcher=fetcher
+            schemas, out, config=config, style=_style(journal, allow_override), fetcher=fetcher,
+            **_export_kwargs(fmt, width),
         )
     except StyleGuardBlocked as e:
         for a in e.actions:
@@ -150,6 +213,10 @@ def abstract(
     style: str = typer.Option("cohen", help="House style: 'default' or 'cohen'."),
     column: str = typer.Option("half", help="Page width: 'full' | 'half' | 'third'."),
     assets: bool = typer.Option(True, help="Fetch CC assets for unfilled image slots / icons."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
 ) -> None:
     """Render a grant graphical abstract from a GraphicalAbstract JSON (no Claude API call).
 
@@ -161,9 +228,43 @@ def abstract(
     config = load_config()
     fetcher = AssetFetcher(config) if assets else None
     manifest = compose_graphical_abstract(
-        ga, out, config=config, style=_style(journal, None, style), fetcher=fetcher, column=column
+        ga, out, config=config, style=_style(journal, None, style), fetcher=fetcher,
+        column=column, **_export_kwargs(fmt, width),
     )
     _emit(manifest)
+
+
+@app.command(name="render-snippet")
+def render_snippet_cmd(
+    text: str,
+    journal: str = typer.Option("nature", help="Journal preset (figure size + DPI)."),
+    data_kind: str = typer.Option(
+        "signed", help="signed (t/z/%-change) | magnitude | cyclic — picks the Crameri map."
+    ),
+    orientation: str = typer.Option("neurological", help="neurological | radiological."),
+    image: str = typer.Option("stat_map.nii.gz", help="Path to your volume/surface."),
+) -> None:
+    """Emit a standards-baked nilearn / Surf Ice render snippet for a real-data figure.
+
+    For requests the schematic generator must decline (stat maps, glass brain, surface /
+    tractography overlays): prints ready-to-run code with a Crameri colormap, sign-preserving
+    colorbar, journal figure size at print DPI, and an explicit L/R orientation convention.
+    """
+    from .models import DataKind
+    from .render_handoff import render_snippet
+
+    try:
+        dk = DataKind(data_kind)
+    except ValueError:
+        dk = DataKind.SIGNED
+    handoff = render_snippet(
+        text, style=_style(journal, None), data_kind=dk, orientation=orientation, image=image
+    )
+    typer.secho(f"# {handoff.tool} — {handoff.kind} render (standards baked in)", fg="green")
+    for n in handoff.notes:
+        typer.secho(f"# - {n}", fg="cyan")
+    typer.echo()
+    typer.echo(handoff.code)
 
 
 @app.command()
@@ -197,6 +298,10 @@ def compose_schema(
     style: str = typer.Option("default", help="House style: 'default' or 'cohen'."),
     allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
     assets: bool = typer.Option(True, help="Fetch CC assets for anatomical figures."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
 ) -> None:
     """Render a FigureSchema JSON file to a figure (no Claude API call — subscription mode).
 
@@ -208,7 +313,8 @@ def compose_schema(
     fetcher = AssetFetcher(config) if assets else None
     try:
         manifest = compose_figure(
-            fig, out, config=config, style=_style(journal, allow_override, style), fetcher=fetcher
+            fig, out, config=config, style=_style(journal, allow_override, style), fetcher=fetcher,
+            **_export_kwargs(fmt, width),
         )
     except StyleGuardBlocked as e:
         for a in e.actions:

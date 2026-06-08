@@ -20,6 +20,7 @@ from .models import (
     GraphicalAbstract,
     Manifest,
     PlotRequest,
+    ScatterRequest,
     StandardsReport,
 )
 from .palette import PaletteRegistry
@@ -46,27 +47,6 @@ def _viewport(svg: str) -> tuple[float, float]:
     return num(root.get("width")), num(root.get("height"))
 
 
-def _ensure_cairo_discoverable() -> None:
-    """On macOS, point cffi's dlopen at Homebrew's libcairo if it isn't already findable.
-
-    cairocffi (under cairosvg) dlopen()s ``libcairo.2.dylib`` by leaf name, and the dynamic
-    loader does not search Homebrew's lib dir (``/opt/homebrew/lib`` on Apple Silicon,
-    ``/usr/local/lib`` on Intel) by default — so an installed cairo is invisible. Setting
-    ``DYLD_FALLBACK_LIBRARY_PATH`` before the import is honoured by dlopen. No-op when already
-    set, on non-macOS, or when no Homebrew cairo is present.
-    """
-    import os
-    import sys
-
-    if sys.platform != "darwin" or "DYLD_FALLBACK_LIBRARY_PATH" in os.environ:
-        return
-    for base in ("/opt/homebrew", "/usr/local"):
-        libdir = f"{base}/lib"
-        if Path(libdir, "libcairo.2.dylib").exists():
-            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = libdir
-            return
-
-
 def _write_credits(out_dir: Path, assets: list) -> Credits:
     """Build paste-ready attribution, write figure.credits.txt, and return it for the manifest."""
     from .attribution import build_credits, credits_text
@@ -77,35 +57,24 @@ def _write_credits(out_dir: Path, assets: list) -> Credits:
 
 
 def _export_raster(
-    svg: str, out_dir: Path, dpi: int, *, png: bool, pdf: bool
+    svg: str,
+    out_dir: Path,
+    style: StyleSpec,
+    *,
+    png: bool = True,
+    pdf: bool = False,
+    eps: bool = False,
+    tiff: bool = False,
+    figure_width: str = "none",
 ) -> tuple[list[str], list[str]]:
-    """Best-effort raster export. SVG is the primary deliverable (see the brief); PNG/PDF
-    are secondary, so a missing/unloadable cairo never fails a run — it is recorded as a
-    warning and the SVG still ships. Returns (raster_paths, warnings).
+    """Best-effort multi-format export (see :mod:`export`). SVG is the primary deliverable, so
+    a missing/unloadable cairo never fails a run — it is recorded as a warning and the SVG
+    still ships. ``figure_width`` ∈ {none, single, double} sizes to journal column width.
     """
-    paths: list[str] = []
-    if not (png or pdf):
-        return paths, []
-    _ensure_cairo_discoverable()
-    try:
-        import cairosvg  # lazy: importing compose must not hard-require libcairo
-    except Exception as exc:  # ImportError, or OSError when libcairo can't be dlopen'd
-        return paths, [
-            f"raster export skipped: cairosvg/libcairo unavailable ({type(exc).__name__}). "
-            "SVG written; install cairo (e.g. `brew install cairo`) for PNG/PDF export."
-        ]
-    data = svg.encode()
-    if png:
-        p = out_dir / "figure.png"
-        # white background: style_guard strips the generators' frame/bg, so without this the
-        # PNG is transparent (reads as black on dark viewers). Journals want white.
-        cairosvg.svg2png(bytestring=data, write_to=str(p), dpi=dpi, background_color="white")
-        paths.append(str(p))
-    if pdf:
-        p = out_dir / "figure.pdf"
-        cairosvg.svg2pdf(bytestring=data, write_to=str(p))
-        paths.append(str(p))
-    return paths, []
+    from .export import export_artifacts
+
+    formats = [n for flag, n in ((png, "png"), (pdf, "pdf"), (eps, "eps"), (tiff, "tiff")) if flag]
+    return export_artifacts(svg, out_dir, style, formats=formats, figure_width=figure_width)
 
 
 def compose_figure(
@@ -119,6 +88,9 @@ def compose_figure(
     extra_warnings: list[str] | None = None,
     export_png: bool = True,
     export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Generate, enforce standards, export, and write figure.svg + figure.manifest.json."""
     config = config or load_config()
@@ -133,7 +105,8 @@ def compose_figure(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
-        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=export_pdf
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(
@@ -160,6 +133,10 @@ def compose_panels(
     fetcher=None,
     palette: PaletteRegistry | None = None,
     export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Tile multiple figures into one multi-panel SVG with A/B/C letters.
 
@@ -231,7 +208,8 @@ def compose_panels(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(combined)
     rasters, raster_warnings = _export_raster(
-        combined, out_dir, style.preset.raster_dpi, png=export_png, pdf=False
+        combined, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(
@@ -256,6 +234,10 @@ def compose_data_plot(
     style: StyleSpec | None = None,
     palette: PaletteRegistry | None = None,
     export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Render a distribution plot (M8 data_plot) -> compliant SVG + raster + manifest.
 
@@ -278,7 +260,56 @@ def compose_data_plot(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
-        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=False
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
+    )
+
+    manifest = Manifest(
+        figure_type=FigureType.DATA_PLOT,
+        caption_seed=request.title,
+        svg_path=str(svg_path),
+        raster_paths=rasters,
+        journal=style.journal,
+        standards=report,
+        warnings=raster_warnings,
+    )
+    (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
+    return manifest
+
+
+def compose_scatter(
+    request: ScatterRequest,
+    out_dir: str | Path,
+    *,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    palette: PaletteRegistry | None = None,
+    export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
+) -> Manifest:
+    """Render a scatter/correlation plot (OLS fit + 95% band + r/p/n) -> SVG + raster + manifest."""
+    from .generators.data_plot import build_scatter_svg
+
+    config = config or load_config()
+    style = style or StyleSpec(journal=config.journal)
+    palette = palette or PaletteRegistry(colors=list(style.categorical))
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    svg, actions = build_scatter_svg(request, style, palette)
+    report = StandardsReport()
+    for a in actions:
+        report.add(a)
+    cleaned, report = enforce(svg, style, report=report)
+
+    svg_path = out_dir / "figure.svg"
+    svg_path.write_text(cleaned)
+    rasters, raster_warnings = _export_raster(
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(
@@ -304,6 +335,9 @@ def compose_graphical_abstract(
     column: str | None = None,
     export_png: bool = True,
     export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Render a structural graphical abstract -> compliant SVG + raster + manifest + credits.
 
@@ -326,7 +360,8 @@ def compose_graphical_abstract(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
-        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=export_pdf
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(

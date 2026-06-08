@@ -194,7 +194,34 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
 - Output quality spot-checked by rendering anatomical/circuit/pipeline/data_plot with real
   assets and visually inspecting the PNGs (pipeline + data_plot were already publication-grade).
 
+**Done since (best-in-class build, 165 tests):**
+- **`data_plot` expanded with scatter + stats** (`generators/data_plot.py`, `stats.py`).
+  `build_scatter_svg` / `ScatterRequest` / `compose_scatter` draw a scatter with an OLS line +
+  95% mean-response band and Pearson r/p/n; groups colour **and marker shape** (CVD-safe,
+  records `group_shape`). `PlotRequest.annotate_stats` draws stacked significance brackets
+  (stars on the plot; exact p, n, effect size in the manifest via `stat_reporting`) — Welch /
+  paired t / Mann-Whitney via `parametric`/`paired`; n appended to tick labels. CLI `scidraw
+  scatter`, MCP `make_scatter_plot`; scipy added to the `plots` extra.
+- **Neuro-decline is now a head start** (`render_handoff.py`). `check_decline` (MCP) and CLI
+  `render-snippet` / the `prompt`·`ingest` decline path emit a ready-to-run nilearn / Surf Ice
+  snippet with the standards baked in: Crameri colormap by `data_kind`, sign-preserving
+  colorbar, journal figure size at print DPI, explicit L/R orientation. Kind routed from the
+  request (glass-brain / stat-map / surface / connectome / tractography).
+- **Export completeness** (`export.py`, replaces `compose._export_raster`/`_ensure_cairo…`).
+  SVG + PNG + PDF + **EPS** + **TIFF**; `figure_width` (single/double) sizes to the journal
+  column in mm (vector physical size + raster px = DPI×size); TIFF is **CMYK** for CMYK
+  journals (naive conversion, honestly flagged). Wired through every `compose_*`, CLI
+  `--format/--width`, and the MCP compose tools (`formats`/`figure_width`). Pillow → `export`
+  extra.
+- **Tier-2 standards rules** (PLAN §5b; catalog now 24). style_guard adds **no_3d** [BLOCK,
+  fixed 3D vocabulary — hex-id safe], **no_hatch** [DEFAULT, pattern→solid], **tick_density**
+  [WARN], **bubble_area** [WARN], **text_contrast** [WARN, <4.5:1 vs white], **abbreviation_
+  legend** [WARN, ≥3 abbreviations]; **group_shape** [BLOCK] guaranteed in the scatter
+  generator. WARN rules verified silent on clean Cohen-styled output.
+
 **Known follow-ups (not yet built):** BIOART neuro depth is shallow (no synapse / microglia /
 spinal-cord / EEG); Wikimedia is broad but quality varies; PhyloPic matches taxonomic names
 best (common names like "mouse" may miss). Sequential pipelines get one Okabe-Ito colour per
-step (slightly rainbow) — could shade by a single hue. All handled by graceful degradation.
+step (slightly rainbow) — could shade by a single hue. CMYK is a naive PIL conversion (no ICC
+profile); EPS stays RGB vector. Multi-panel grid still tiles horizontally only (no shared
+legend/axes). All handled by graceful degradation.
