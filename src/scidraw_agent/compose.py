@@ -89,7 +89,9 @@ def _export_raster(
     data = svg.encode()
     if png:
         p = out_dir / "figure.png"
-        cairosvg.svg2png(bytestring=data, write_to=str(p), dpi=dpi)
+        # white background: style_guard strips the generators' frame/bg, so without this the
+        # PNG is transparent (reads as black on dark viewers). Journals want white.
+        cairosvg.svg2png(bytestring=data, write_to=str(p), dpi=dpi, background_color="white")
         paths.append(str(p))
     if pdf:
         p = out_dir / "figure.pdf"
@@ -113,7 +115,7 @@ def compose_figure(
     """Generate, enforce standards, export, and write figure.svg + figure.manifest.json."""
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
-    palette = palette or PaletteRegistry()
+    palette = palette or PaletteRegistry(colors=list(style.categorical))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -160,7 +162,7 @@ def compose_panels(
 
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
-    palette = palette or PaletteRegistry()  # shared across panels
+    palette = palette or PaletteRegistry(colors=list(style.categorical))  # shared across panels
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -255,7 +257,7 @@ def compose_data_plot(
 
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
-    palette = palette or PaletteRegistry()
+    palette = palette or PaletteRegistry(colors=list(style.categorical))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

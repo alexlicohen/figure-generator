@@ -20,13 +20,16 @@ from .generators.data_plot import DynamitePlotError
 from .models import FigureSchema, PlotRequest
 from .run import figure_from_file, figure_from_text
 from .standards import StyleGuardBlocked, enforce
-from .theme import StyleSpec
+from .theme import StyleSpec, cohen_lab
 
 app = typer.Typer(add_completion=False, help="Prompt-driven scientific schematic generator.")
 
 
-def _style(journal: str, allow_override: list[str] | None) -> StyleSpec:
-    return StyleSpec(journal=journal, allow_overrides=list(allow_override or []))
+def _style(journal: str, allow_override: list[str] | None, style: str = "default") -> StyleSpec:
+    """Build a StyleSpec for a journal, optionally on a named house style (e.g. 'cohen')."""
+    base = cohen_lab(journal) if style == "cohen" else StyleSpec(journal=journal)
+    base.allow_overrides = list(allow_override or [])
+    return base
 
 
 def _emit(manifest) -> None:
@@ -162,19 +165,21 @@ def compose_schema(
     schema_path: Path,
     out: Path = typer.Option(Path("figure_out"), help="Output directory."),
     journal: str = typer.Option("nature", help="Journal preset."),
+    style: str = typer.Option("default", help="House style: 'default' or 'cohen'."),
     allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
     assets: bool = typer.Option(True, help="Fetch CC assets for anatomical figures."),
 ) -> None:
     """Render a FigureSchema JSON file to a figure (no Claude API call — subscription mode).
 
     Author the schema yourself (or have Claude Code author it) and render it locally.
+    ``--style cohen`` applies the Cohen-lab house style (outline cards, lab palette).
     """
     config = load_config()
     fig = FigureSchema.model_validate_json(schema_path.read_text())
     fetcher = AssetFetcher(config) if assets else None
     try:
         manifest = compose_figure(
-            fig, out, config=config, style=_style(journal, allow_override), fetcher=fetcher
+            fig, out, config=config, style=_style(journal, allow_override, style), fetcher=fetcher
         )
     except StyleGuardBlocked as e:
         for a in e.actions:

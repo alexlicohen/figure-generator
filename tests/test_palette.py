@@ -70,3 +70,12 @@ def test_palette_registry_stable_and_baseline_grey():
     assert b.color != a1.color  # distinct groups get distinct colours
     # control retains its colour after later groups are added
     assert reg.assign("control").color == BASELINE_GREY
+
+
+def test_palette_registry_custom_colors():
+    from scidraw_agent.palette import COHEN_CATEGORICAL, PaletteRegistry
+
+    reg = PaletteRegistry(colors=list(COHEN_CATEGORICAL))
+    assert reg.assign("g1").color == COHEN_CATEGORICAL[0]
+    assert reg.assign("g2").color == COHEN_CATEGORICAL[1]
+    assert reg.assign("g1").color == COHEN_CATEGORICAL[0]  # stable per group

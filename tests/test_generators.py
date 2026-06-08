@@ -177,3 +177,85 @@ def test_anatomical_boost_contrast_rewrites_fill():
     path, rect = root.findall(f".//{{{SVG}}}path")[0], root.findall(f".//{{{SVG}}}rect")[0]
     assert "211" not in path.get("style")  # pale grey darkened
     assert rect.get("fill") == "#BBE0E3"  # light teal untouched
+
+
+def test_asset_style_grayscale_desaturates_and_normalizes():
+    from scidraw_agent.generators.anatomical import _normalize_asset
+
+    svg = (
+        f'<svg xmlns="{SVG}"><rect fill="#BBE0E3"/>'  # light teal (chromatic)
+        f'<path style="fill:rgb(211,211,211)"/></svg>'  # pale grey
+    )
+    root = etree.fromstring(svg.encode())
+    _normalize_asset(root, StyleSpec(asset_style="grayscale"))
+    rect = root.findall(f".//{{{SVG}}}rect")[0]
+    from scidraw_agent.palette import parse_color
+
+    r, g, b = parse_color(rect.get("fill"))
+    assert r == g == b  # desaturated to neutral grey
+
+
+def test_asset_style_tint_uses_house_ink():
+    from scidraw_agent.generators.anatomical import _normalize_asset
+    from scidraw_agent.palette import parse_color
+
+    svg = f'<svg xmlns="{SVG}"><rect fill="#999999"/><path fill="#222222"/></svg>'
+    root = etree.fromstring(svg.encode())
+    _normalize_asset(root, StyleSpec(asset_style="tint", asset_tint="#37576B"))
+    for tag in ("rect", "path"):
+        r, g, b = parse_color(root.findall(f".//{{{SVG}}}{tag}")[0].get("fill"))
+        assert b >= r  # slate-blue ink: blue channel never below red
+
+
+def test_asset_style_native_is_default_and_unchanged():
+    from scidraw_agent.generators.anatomical import _normalize_asset
+    from scidraw_agent.palette import parse_color
+
+    assert StyleSpec().asset_style == "native"
+    svg = f'<svg xmlns="{SVG}"><rect fill="#BBE0E3"/></svg>'  # light teal stays (native)
+    root = etree.fromstring(svg.encode())
+    _normalize_asset(root, StyleSpec())
+    assert parse_color(root.findall(f".//{{{SVG}}}rect")[0].get("fill")) == (187, 224, 227)
+
+
+def test_cohen_lab_preset_outline_palette_grayscale():
+    from scidraw_agent.theme import cohen_lab
+
+    s = cohen_lab()
+    assert s.node_style == "outline"
+    assert s.categorical[0] == "#2F5C8A" and s.categorical[1] == "#D97A1E"
+    assert s.asset_style == "grayscale"
+
+
+def test_node_style_outline_renders_white_cards_with_palette_outline():
+    from scidraw_agent.palette import PaletteRegistry
+    from scidraw_agent.theme import cohen_lab
+
+    schema = FigureSchema(
+        figure_type=FigureType.STUDY_DESIGN,
+        entities=[Entity(id="a", label="Patients", group="patients")],
+        edges=[],
+    )
+    style = cohen_lab()
+    result = route(schema.figure_type).generate(
+        schema, style, PaletteRegistry(colors=list(style.categorical)), fetcher=None
+    )
+    svg = result.svg.lower()
+    assert "2f5c8a" in svg  # cohen steel-blue used as the node outline
+    assert 'fill="#ffffff"' in svg or 'fill="white"' in svg  # white card, not a filled colour
+
+
+def test_asset_style_normalizes_css_class_fills():
+    import re
+
+    from scidraw_agent.generators.anatomical import _normalize_asset
+    from scidraw_agent.palette import parse_color
+
+    # DBCLS/Illustrator SVGs hide fills in <style> CSS classes — these must normalize too.
+    svg = f'<svg xmlns="{SVG}"><style>.st0{{fill:#ED1C24}}</style><path class="st0"/></svg>'
+    root = etree.fromstring(svg.encode())
+    _normalize_asset(root, StyleSpec(asset_style="grayscale"))
+    css = root.findall(f".//{{{SVG}}}style")[0].text
+    assert "ed1c24" not in css.lower()  # red recoloured
+    r, g, b = parse_color(re.search(r"fill:(#[0-9A-Fa-f]{6})", css).group(1))
+    assert r == g == b  # to neutral grey

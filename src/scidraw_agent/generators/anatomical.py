@@ -8,6 +8,7 @@ Stylized output is tagged "schematic — not to scale" to avoid implying false p
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
@@ -38,52 +39,125 @@ def _tint(hex_color: str) -> str:
     return "#{:02X}{:02X}{:02X}".format(*light)
 
 
-def _darken_pale_achromatic(rgb: tuple[int, int, int]) -> tuple[int, int, int] | None:
+Rgb = tuple[int, int, int]
+_NEAR_WHITE = 244  # ignore near-white / background ink when normalising
+
+
+def _lum(rgb: Rgb) -> float:
+    return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+
+
+def _hex(rgb: Rgb) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*(max(0, min(255, round(c))) for c in rgb))
+
+
+def _parse_style(style: str) -> dict[str, str]:
+    return {
+        k.strip(): v.strip()
+        for chunk in style.split(";")
+        if ":" in chunk
+        for k, v in [chunk.split(":", 1)]
+    }
+
+
+_CSS_COLOR = re.compile(r"(fill|stroke)\s*:\s*([^;}\s]+)")
+
+
+def _apply_color_fn(root: etree._Element, fn) -> None:
+    """Apply fn(rgb)->new_rgb|None to every fill/stroke colour an asset can use: presentation
+    attributes, inline ``style=""``, AND ``<style>`` CSS class rules (where Illustrator/DBCLS
+    SVGs hide their fills). None = keep the colour unchanged."""
+    for el in root.iter():
+        for attr in ("fill", "stroke"):
+            rgb = parse_color(v) if (v := el.get(attr)) else None
+            if rgb and (new := fn(rgb)):
+                el.set(attr, _hex(new))
+        style = el.get("style")
+        if style and ":" in style:
+            props = _parse_style(style)
+            changed = False
+            for prop in ("fill", "stroke"):
+                rgb = parse_color(props[prop]) if props.get(prop) else None
+                if rgb and (new := fn(rgb)):
+                    props[prop] = _hex(new)
+                    changed = True
+            if changed:
+                el.set("style", ";".join(f"{k}:{v}" for k, v in props.items()))
+        tag = el.tag
+        if isinstance(tag, str) and tag.endswith("style") and el.text and ":" in el.text:
+            el.text = _CSS_COLOR.sub(
+                lambda m: (
+                    f"{m.group(1)}:{_hex(new)}"
+                    if (rgb := parse_color(m.group(2))) and (new := fn(rgb))
+                    else m.group(0)
+                ),
+                el.text,
+            )
+
+
+def _darken_pale_achromatic(rgb: Rgb) -> Rgb | None:
     """Darken a light, near-grey colour so it reads on white; leave colours/darks alone.
 
     Some CC assets are drawn entirely in pale grey (e.g. SciDraw's pyramidal neuron) and
     vanish on a white page. We darken only colours that are both LIGHT and ACHROMATIC (low
     channel spread) — light *coloured* fills (e.g. a diagram's pale-teal regions) are kept.
     """
-    lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
     spread = max(rgb) - min(rgb)
-    if 165 <= lum <= 244 and spread < 30:
+    if 165 <= _lum(rgb) <= _NEAR_WHITE and spread < 30:
         return tuple(round(c * 0.6) for c in rgb)
     return None
 
 
 def _boost_contrast(root: etree._Element) -> None:
-    """Rewrite pale-grey fills/strokes (attr or inline style) to a readable tone."""
-    for el in root.iter():
-        for attr in ("fill", "stroke"):
-            val = el.get(attr)
-            rgb = parse_color(val) if val else None
-            if rgb and (dark := _darken_pale_achromatic(rgb)):
-                el.set(attr, "#{:02X}{:02X}{:02X}".format(*dark))
-        style = el.get("style")
-        if style and (":" in style):
-            props = dict(
-                (k.strip(), v.strip())
-                for chunk in style.split(";")
-                if ":" in chunk
-                for k, v in [chunk.split(":", 1)]
-            )
-            changed = False
-            for prop in ("fill", "stroke"):
-                rgb = parse_color(props[prop]) if props.get(prop) else None
-                if rgb and (dark := _darken_pale_achromatic(rgb)):
-                    props[prop] = "#{:02X}{:02X}{:02X}".format(*dark)
-                    changed = True
-            if changed:
-                el.set("style", ";".join(f"{k}:{v}" for k, v in props.items()))
+    """native house style: rewrite pale-grey fills/strokes (attr or inline style) so they read."""
+    _apply_color_fn(root, _darken_pale_achromatic)
 
 
-def _embed_asset(path: str, x: float, y: float, w: float, h: float) -> str | None:
+def _normalize_asset(root: etree._Element, style: StyleSpec) -> None:
+    """Recolour a fetched asset per the house style (native / grayscale / tint).
+
+    grayscale & tint contrast-normalise the asset's own luminance range to a duotone ramp, so
+    heterogeneous source styles read as one coherent set; near-white background ink is left
+    transparent. native only rescues invisibly-pale ink (keeps original colours).
+    """
+    mode = getattr(style, "asset_style", "native")
+    if mode == "native":
+        _boost_contrast(root)
+        return
+
+    inks: list[float] = []
+
+    def _collect(rgb: Rgb):
+        if _lum(rgb) <= _NEAR_WHITE:
+            inks.append(_lum(rgb))
+        return None  # collection pass — no recolour
+
+    _apply_color_fn(root, _collect)
+    if not inks:
+        return
+    lo, span = min(inks), (max(inks) - min(inks)) or 1.0
+
+    if mode == "tint":
+        dark = parse_color(style.asset_tint) or (55, 87, 107)
+    else:  # grayscale
+        dark = (55, 55, 55)
+    light = tuple(round(c + (255 - c) * 0.80) for c in dark)  # blend toward white
+
+    def remap(rgb: Rgb) -> Rgb | None:
+        if _lum(rgb) > _NEAR_WHITE:
+            return None  # leave background/white ink
+        t = max(0.0, min(1.0, (_lum(rgb) - lo) / span))  # 0=darkest ink … 1=lightest
+        return tuple(dark[i] + (light[i] - dark[i]) * t for i in range(3))
+
+    _apply_color_fn(root, remap)
+
+
+def _embed_asset(path: str, x: float, y: float, w: float, h: float, style: StyleSpec) -> str | None:
     try:
         root = etree.fromstring(open(path, "rb").read())
     except (OSError, etree.XMLSyntaxError):
         return None
-    _boost_contrast(root)
+    _normalize_asset(root, style)
     if not root.get("viewBox"):
         ow, oh = root.get("width", "100"), root.get("height", "100")
         import re
@@ -134,7 +208,7 @@ class AnatomicalGenerator:
                 query = e.suggested_asset_query or e.label
                 record = fetcher.resolve(query).record
             if record and record.local_path:
-                embedded = _embed_asset(record.local_path, x, y, SLOT_W, SLOT_H)
+                embedded = _embed_asset(record.local_path, x, y, SLOT_W, SLOT_H, style)
                 if embedded:
                     body.append(embedded)
                     assets.append(record)

@@ -62,6 +62,8 @@ class CircuitGenerator:
         *,
         fetcher: AssetFetcher | None = None,
     ) -> GeneratorResult:
+        outline = getattr(style, "node_style", "filled") == "outline"
+        ink = getattr(style, "node_ink", EDGE_COLOR)
         g = graphviz.Digraph("circuit")
         g.attr(rankdir="LR", bgcolor="white", nodesep="0.4", ranksep="0.7")
         g.attr(
@@ -70,9 +72,9 @@ class CircuitGenerator:
             style="filled,rounded",
             fontname="Arial",
             fontsize="12",
-            penwidth="1.2",
-            color=EDGE_COLOR,
-            margin="0.18,0.10",
+            penwidth="1.8" if outline else "1.2",
+            color=ink,
+            margin="0.18,0.12",
         )
         g.attr(
             "edge",
@@ -84,8 +86,11 @@ class CircuitGenerator:
         )
 
         for e in schema.entities:
-            fill = palette.assign(e.group or e.id).color
-            g.node(e.id, e.label, fillcolor=fill, fontcolor=_font_color(fill))
+            accent = palette.assign(e.group or e.id).color
+            if outline:
+                g.node(e.id, e.label, fillcolor="white", color=accent, fontcolor=ink)
+            else:
+                g.node(e.id, e.label, fillcolor=accent, fontcolor=_font_color(accent))
 
         ids = schema.entity_ids()
         relations: set[EdgeRelation] = set()
