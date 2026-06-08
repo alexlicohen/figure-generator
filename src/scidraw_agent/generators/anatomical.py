@@ -38,11 +38,52 @@ def _tint(hex_color: str) -> str:
     return "#{:02X}{:02X}{:02X}".format(*light)
 
 
+def _darken_pale_achromatic(rgb: tuple[int, int, int]) -> tuple[int, int, int] | None:
+    """Darken a light, near-grey colour so it reads on white; leave colours/darks alone.
+
+    Some CC assets are drawn entirely in pale grey (e.g. SciDraw's pyramidal neuron) and
+    vanish on a white page. We darken only colours that are both LIGHT and ACHROMATIC (low
+    channel spread) — light *coloured* fills (e.g. a diagram's pale-teal regions) are kept.
+    """
+    lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+    spread = max(rgb) - min(rgb)
+    if 165 <= lum <= 244 and spread < 30:
+        return tuple(round(c * 0.6) for c in rgb)
+    return None
+
+
+def _boost_contrast(root: etree._Element) -> None:
+    """Rewrite pale-grey fills/strokes (attr or inline style) to a readable tone."""
+    for el in root.iter():
+        for attr in ("fill", "stroke"):
+            val = el.get(attr)
+            rgb = parse_color(val) if val else None
+            if rgb and (dark := _darken_pale_achromatic(rgb)):
+                el.set(attr, "#{:02X}{:02X}{:02X}".format(*dark))
+        style = el.get("style")
+        if style and (":" in style):
+            props = dict(
+                (k.strip(), v.strip())
+                for chunk in style.split(";")
+                if ":" in chunk
+                for k, v in [chunk.split(":", 1)]
+            )
+            changed = False
+            for prop in ("fill", "stroke"):
+                rgb = parse_color(props[prop]) if props.get(prop) else None
+                if rgb and (dark := _darken_pale_achromatic(rgb)):
+                    props[prop] = "#{:02X}{:02X}{:02X}".format(*dark)
+                    changed = True
+            if changed:
+                el.set("style", ";".join(f"{k}:{v}" for k, v in props.items()))
+
+
 def _embed_asset(path: str, x: float, y: float, w: float, h: float) -> str | None:
     try:
         root = etree.fromstring(open(path, "rb").read())
     except (OSError, etree.XMLSyntaxError):
         return None
+    _boost_contrast(root)
     if not root.get("viewBox"):
         ow, oh = root.get("width", "100"), root.get("height", "100")
         import re

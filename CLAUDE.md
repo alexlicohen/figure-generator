@@ -160,6 +160,19 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
     per-image CC license mapped + gated. `backends/_text.py` holds shared token/relevance helpers.
   - Live coverage in `test_fetch_live.py` for all three (auto-skip if a host is unreachable).
 
+- **Circuit generator rebuilt on Graphviz** (`generators/circuit.py`). The old single-row
+  drawsvg layout drew non-adjacent edges *through* intermediate nodes (e.g. M1→cord with an
+  interneuron between them), misrepresenting the circuit. Now Graphviz lays it out (rankdir=LR);
+  edge polarity via arrowhead shape (`normal` excitatory / `tee` inhibitory / `empty`+dashed
+  modulatory); a compact legend is appended as SVG for the relation types present. `drawsvg`
+  dependency dropped (was its only user).
+- **Anatomical contrast fix** — `anatomical._boost_contrast` darkens pale *achromatic* asset
+  fills/strokes (e.g. SciDraw's all-pale-grey pyramidal neuron that vanished on white) while
+  sparing light *coloured* fills (a diagram's pale-teal regions). Light+low-channel-spread only.
+- Output quality spot-checked by rendering anatomical/circuit/pipeline/data_plot with real
+  assets and visually inspecting the PNGs (pipeline + data_plot were already publication-grade).
+
 **Known follow-ups (not yet built):** BIOART neuro depth is shallow (no synapse / microglia /
 spinal-cord / EEG); Wikimedia is broad but quality varies; PhyloPic matches taxonomic names
-best (common names like "mouse" may miss). All handled by graceful degradation.
+best (common names like "mouse" may miss). Sequential pipelines get one Okabe-Ito colour per
+step (slightly rainbow) — could shade by a single hue. All handled by graceful degradation.

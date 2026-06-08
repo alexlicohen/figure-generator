@@ -113,3 +113,67 @@ def test_anatomical_placeholder_path_offline():
     assert all(a.is_placeholder for a in result.assets)
     assert result.warnings and "nilearn" in " ".join(result.warnings)
     assert "schematic — not to scale" in " ".join(_texts(cleaned))
+
+
+def test_circuit_legend_reflects_present_relations():
+    # Graphviz rebuild: the appended legend names exactly the relation types used.
+    cleaned, _, _ = _guarded(_circuit_schema())  # projects_to + inhibits
+    texts = _texts(cleaned)
+    assert "CST" in texts  # edge label rendered
+    assert any("excitatory" in t for t in texts)
+    assert any(t == "inhibitory" for t in texts)
+    assert not any("modulatory" in t for t in texts)
+
+
+def test_circuit_modulatory_is_dashed_and_in_legend():
+    schema = FigureSchema(
+        figure_type=FigureType.MECHANISTIC_CIRCUIT,
+        entities=[Entity(id="a", label="VTA"), Entity(id="b", label="NAc")],
+        edges=[Edge(source="a", target="b", relation=EdgeRelation.MODULATES)],
+    )
+    cleaned, _, _ = _guarded(schema)
+    assert any("modulatory" in t for t in _texts(cleaned))
+    assert "stroke-dasharray" in cleaned  # dashed modulatory edge/legend sample
+
+
+def test_circuit_nonadjacent_edge_does_not_need_adjacency():
+    # Regression: the old single-row drawer ran M1->cord straight through the interneuron
+    # listed between them. Graphviz layout makes entity order irrelevant; just confirm it
+    # renders all three nodes + both relations cleanly.
+    schema = FigureSchema(
+        figure_type=FigureType.MECHANISTIC_CIRCUIT,
+        entities=[
+            Entity(id="m1", label="M1"),
+            Entity(id="inh", label="Interneuron"),  # listed BETWEEN source and target
+            Entity(id="sc", label="Cord"),
+        ],
+        edges=[
+            Edge(source="m1", target="sc", relation=EdgeRelation.PROJECTS_TO),
+            Edge(source="inh", target="m1", relation=EdgeRelation.INHIBITS),
+        ],
+    )
+    cleaned, _, _ = _guarded(schema)
+    texts = _texts(cleaned)
+    assert {"M1", "Interneuron", "Cord"} <= set(texts)
+    assert any("excitatory" in t for t in texts) and any(t == "inhibitory" for t in texts)
+
+
+def test_anatomical_contrast_darkens_pale_grey_only():
+    from scidraw_agent.generators.anatomical import _darken_pale_achromatic
+
+    assert _darken_pale_achromatic((211, 211, 211)) == (127, 127, 127)  # pale grey -> darker
+    assert _darken_pale_achromatic((183, 187, 182)) is not None  # near-grey -> darkened
+    assert _darken_pale_achromatic((187, 224, 227)) is None  # #BBE0E3 light teal -> spared
+    assert _darken_pale_achromatic((121, 121, 121)) is None  # already dark -> kept
+    assert _darken_pale_achromatic((255, 255, 255)) is None  # white/background -> kept
+
+
+def test_anatomical_boost_contrast_rewrites_fill():
+    from scidraw_agent.generators.anatomical import _boost_contrast
+
+    svg = f'<svg xmlns="{SVG}"><path style="fill:rgb(211,211,211)"/><rect fill="#BBE0E3"/></svg>'
+    root = etree.fromstring(svg.encode())
+    _boost_contrast(root)
+    path, rect = root.findall(f".//{{{SVG}}}path")[0], root.findall(f".//{{{SVG}}}rect")[0]
+    assert "211" not in path.get("style")  # pale grey darkened
+    assert rect.get("fill") == "#BBE0E3"  # light teal untouched
