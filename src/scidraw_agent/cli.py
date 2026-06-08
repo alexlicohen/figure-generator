@@ -38,6 +38,13 @@ def _emit(manifest) -> None:
     fixes = [a.rule_id for a in manifest.standards.applied_fixes]
     if fixes:
         typer.echo(f"standards applied: {', '.join(fixes)}")
+    if manifest.credits.legend_line:
+        typer.echo("credits: figure.credits.txt (paste-ready legend line)")
+        if manifest.credits.attribution_required:
+            typer.secho(
+                "  ⚠ contains CC-BY assets — attribution required in the legend.",
+                fg=typer.colors.YELLOW,
+            )
 
 
 @app.command()

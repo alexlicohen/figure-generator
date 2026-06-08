@@ -13,7 +13,7 @@ from pathlib import Path
 from lxml import etree
 
 from .config import Config, load_config
-from .models import FigureSchema, FigureType, Manifest, PlotRequest, StandardsReport
+from .models import Credits, FigureSchema, FigureType, Manifest, PlotRequest, StandardsReport
 from .palette import PaletteRegistry
 from .router import route
 from .standards import enforce
@@ -57,6 +57,15 @@ def _ensure_cairo_discoverable() -> None:
         if Path(libdir, "libcairo.2.dylib").exists():
             os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = libdir
             return
+
+
+def _write_credits(out_dir: Path, assets: list) -> Credits:
+    """Build paste-ready attribution, write figure.credits.txt, and return it for the manifest."""
+    from .attribution import build_credits, credits_text
+
+    credits = build_credits(assets)
+    (out_dir / "figure.credits.txt").write_text(credits_text(credits))
+    return credits
 
 
 def _export_raster(
@@ -125,6 +134,7 @@ def compose_figure(
         journal=style.journal,
         assets=result.assets,
         standards=report,
+        credits=_write_credits(out_dir, result.assets),
         warnings=result.warnings + (extra_warnings or []) + raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
@@ -221,6 +231,7 @@ def compose_panels(
         journal=style.journal,
         assets=all_assets,
         standards=report_total or enforce("<svg/>", style)[1],
+        credits=_write_credits(out_dir, all_assets),
         warnings=all_warnings + raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))

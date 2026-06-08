@@ -43,8 +43,11 @@ def test_compose_figure_writes_svg_raster_and_manifest(tmp_path):
 
     # manifest carries license + standards blocks
     data = json.loads((out / "figure.manifest.json").read_text())
-    assert "assets" in data and "standards" in data
+    assert "assets" in data and "standards" in data and "credits" in data
     assert manifest.caption_seed.startswith("Corticospinal")
+
+    # paste-ready credits file is always written (no assets here -> "nothing to attribute")
+    assert (out / "figure.credits.txt").exists()
 
 
 def test_compose_anatomical_records_placeholder_warnings(tmp_path):

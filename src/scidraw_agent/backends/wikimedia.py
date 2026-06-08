@@ -28,7 +28,10 @@ _TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _strip_html(value: str | None) -> str:
-    return _TAG_RE.sub("", value or "").strip()
+    # drop tags and collapse whitespace (Artist values are HTML and often multi-line)
+    text = " ".join(_TAG_RE.sub(" ", value or "").split())
+    text = re.sub(r"\s+([):;,.])", r"\1", text)  # no space before closing punctuation
+    return re.sub(r"(\()\s+", r"\1", text)  # no space after an opening paren
 
 
 def _norm_license(short: str | None) -> str | None:
