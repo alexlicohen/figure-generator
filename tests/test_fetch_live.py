@@ -11,6 +11,11 @@ import requests
 
 from scidraw_agent.backends.bioart import ITEM_PAGE, BioartBackend
 from scidraw_agent.backends.bioicons import INDEX_URL, BioiconsBackend
+from scidraw_agent.backends.healthicons import INDEX_URL as HI_INDEX
+from scidraw_agent.backends.healthicons import HealthIconsBackend
+from scidraw_agent.backends.phylopic import ROOT as PP_ROOT
+from scidraw_agent.backends.phylopic import PhylopicBackend
+from scidraw_agent.backends.wikimedia import COMMONS_API, WikimediaBackend
 from scidraw_agent.backends.zenodo import ZENODO_API, ZenodoBackend
 from scidraw_agent.config import Config
 from scidraw_agent.fetch import AssetFetcher
@@ -59,3 +64,41 @@ def test_live_zenodo_download(tmp_path):
     assert result.record.license and result.record.doi
     body = open(result.record.local_path, "rb").read()
     assert body.lstrip().startswith(b"<") and b"svg" in body[:400].lower()
+
+
+@pytest.mark.skipif(not _reachable(COMMONS_API), reason="Wikimedia Commons not reachable")
+def test_live_wikimedia_download(tmp_path):
+    # Human neuroanatomy SciDraw/BIOART lack; mixed-license -> gate picks a CC-BY/CC0/PD one.
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[WikimediaBackend()])
+    result = fetcher.resolve("hippocampus")
+
+    assert result.record is not None, "expected a CC-compatible Commons hippocampus SVG"
+    from scidraw_agent.registry import license_ok
+
+    assert license_ok(result.record.license)
+    body = open(result.record.local_path, "rb").read()
+    assert body.lstrip().startswith(b"<") and b"svg" in body[:600].lower()
+
+
+@pytest.mark.skipif(not _reachable(HI_INDEX), reason="Health Icons host not reachable")
+def test_live_healthicons_download(tmp_path):
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[HealthIconsBackend()])
+    result = fetcher.resolve("brain")
+
+    assert result.record is not None and result.record.license == "cc0-1.0"
+    body = open(result.record.local_path, "rb").read()
+    assert b"svg" in body[:400].lower()
+
+
+@pytest.mark.skipif(not _reachable(PP_ROOT), reason="PhyloPic API not reachable")
+def test_live_phylopic_download(tmp_path):
+    # Organism silhouette (taxonomic name) for cohort/study-design panels.
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[PhylopicBackend()])
+    result = fetcher.resolve("mus musculus")
+
+    assert result.record is not None, "expected a PhyloPic mouse silhouette"
+    from scidraw_agent.registry import license_ok
+
+    assert license_ok(result.record.license)
+    body = open(result.record.local_path, "rb").read()
+    assert b"svg" in body[:400].lower()
