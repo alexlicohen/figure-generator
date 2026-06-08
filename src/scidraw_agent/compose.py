@@ -301,6 +301,7 @@ def compose_graphical_abstract(
     config: Config | None = None,
     style: StyleSpec | None = None,
     fetcher=None,
+    column: str | None = None,
     export_png: bool = True,
     export_pdf: bool = False,
 ) -> Manifest:
@@ -308,11 +309,14 @@ def compose_graphical_abstract(
 
     The composition is generated; images are slotted from real renders / CC assets (never an
     image model). CC-fetched assets carry their licence into the manifest + figure.credits.txt.
+    ``column`` ("full" | "half" | "third") overrides the abstract's page-column width.
     """
     from .generators.graphical_abstract import build_graphical_abstract_svg
 
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
+    if column:
+        ga.column, ga.width = column, 0.0
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

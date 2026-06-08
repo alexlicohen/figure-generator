@@ -148,18 +148,20 @@ def abstract(
     out: Path = typer.Option(Path("figure_out"), help="Output directory."),
     journal: str = typer.Option("nature", help="Journal preset."),
     style: str = typer.Option("cohen", help="House style: 'default' or 'cohen'."),
-    assets: bool = typer.Option(True, help="Fetch CC assets for unfilled image slots."),
+    column: str = typer.Option("half", help="Page width: 'full' | 'half' | 'third'."),
+    assets: bool = typer.Option(True, help="Fetch CC assets for unfilled image slots / icons."),
 ) -> None:
     """Render a grant graphical abstract from a GraphicalAbstract JSON (no Claude API call).
 
     The design is generated structurally; image slots take your own render paths (preferred)
-    or a CC asset_query (fallback) — never an image model. Defaults to the Cohen house style.
+    or a CC asset_query (fallback) — never an image model. Narrow ``--column`` widths reflow
+    multi-item rows to stack vertically. Defaults to the Cohen house style, half-column width.
     """
     ga = GraphicalAbstract.model_validate_json(spec_path.read_text())
     config = load_config()
     fetcher = AssetFetcher(config) if assets else None
     manifest = compose_graphical_abstract(
-        ga, out, config=config, style=_style(journal, None, style), fetcher=fetcher
+        ga, out, config=config, style=_style(journal, None, style), fetcher=fetcher, column=column
     )
     _emit(manifest)
 
