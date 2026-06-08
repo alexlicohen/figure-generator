@@ -772,14 +772,6 @@ wheels = [
 ]
 
 [[package]]
-name = "drawsvg"
-version = "2.4.1"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/07/a2c3db84e6af6fa761de905b39109fe24eff2c8d52653c1bff968b6b965d/drawsvg-2.4.1-py3-none-any.whl", hash = "sha256:241ff024968e03542bc8685b41a285427303c17f81eae1933229d26bb65b7fda", size = 44067, upload-time = "2026-01-04T00:06:09.817Z" },
-]
-
-[[package]]
 name = "email-validator"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1086,7 +1078,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -2495,7 +2487,6 @@ dependencies = [
     { name = "cairosvg" },
     { name = "cmcrameri" },
     { name = "colorspacious" },
-    { name = "drawsvg" },
     { name = "fastmcp" },
     { name = "graphviz" },
     { name = "lxml" },
@@ -2526,7 +2517,6 @@ requires-dist = [
     { name = "cairosvg", specifier = ">=2.9" },
     { name = "cmcrameri", specifier = ">=1.9" },
     { name = "colorspacious", specifier = ">=1.1.2" },
-    { name = "drawsvg", specifier = ">=2.4.1" },
     { name = "fastmcp", specifier = ">=2.3" },
     { name = "graphviz", specifier = ">=0.21" },
     { name = "lxml", specifier = ">=5.0" },

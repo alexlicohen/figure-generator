@@ -13,7 +13,6 @@ dependencies = [
     "zenodo-get>=1.6",
     "lxml>=5.0",
     "svgutils==0.3.4",
-    "drawsvg>=2.4.1",
     "svgpathtools>=1.7",
     "cairosvg>=2.9",
     "graphviz>=0.21",
