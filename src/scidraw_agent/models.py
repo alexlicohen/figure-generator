@@ -179,6 +179,22 @@ class StandardsReport(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Attribution / credits
+# --------------------------------------------------------------------------- #
+class Credits(BaseModel):
+    """Paste-ready attribution for the figure (also written to figure.credits.txt).
+
+    Reused image assets are credited in the figure legend, not the bibliography.
+    """
+
+    legend_line: str = Field(default="", description="One sentence to paste into the legend.")
+    per_asset: list[str] = Field(default_factory=list)
+    attribution_required: bool = Field(
+        default=False, description="True if any asset is CC-BY (legally must be credited)."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Manifest
 # --------------------------------------------------------------------------- #
 class Manifest(BaseModel):
@@ -191,6 +207,7 @@ class Manifest(BaseModel):
     journal: str = "nature"
     assets: list[AssetRecord] = Field(default_factory=list)
     standards: StandardsReport = Field(default_factory=StandardsReport)
+    credits: Credits = Field(default_factory=Credits)
     warnings: list[str] = Field(
         default_factory=list,
         description="Free-form figure-level warnings (e.g. missing-asset placeholders).",

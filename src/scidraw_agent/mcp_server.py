@@ -55,6 +55,7 @@ def _manifest_summary(manifest) -> dict:
         "assets": [a.model_dump() for a in manifest.assets],
         "warnings": manifest.warnings,
         "standards": _report_dict(manifest.standards),
+        "credits": manifest.credits.model_dump(),
     }
 
 

@@ -62,9 +62,17 @@ scidraw lint figure.svg
 scidraw lint figure.svg --allow-override no_pie   # documented per-figure escape hatch
 ```
 
-Each run writes `figure.svg` (editable, text-as-text), a raster (`figure.png`), and
+Each run writes `figure.svg` (editable, text-as-text), a raster (`figure.png`),
 `figure.manifest.json` recording **license provenance** (each asset's DOI + license) and
-**standards provenance** (applied fixes, honoured overrides, warnings).
+**standards provenance** (applied fixes, honoured overrides, warnings), and
+`figure.credits.txt` — **paste-ready attribution** for your figure legend (a one-line credit
+plus per-asset Title/Author/Source/License). Reused assets are credited in the **figure
+legend**, not the bibliography; CC-BY assets must be credited, CC0/public-domain need not be.
+
+### Editing the figure
+Open `figure.svg` in **Inkscape** (free) or Illustrator/Affinity — groups are selectable and
+text stays editable. Export to **PDF/EPS** (keep it vector) for submission; outline/embed
+fonts only at the very end. Paste the credit line from `figure.credits.txt` into your legend.
 
 ### Use in a local Claude Code session (interactive)
 
