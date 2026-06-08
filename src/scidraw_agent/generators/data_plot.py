@@ -274,14 +274,24 @@ def build_scatter_svg(
     actions: list[StandardsAction] = []
     x = np.asarray(request.x, dtype=float)
     y = np.asarray(request.y, dtype=float)
-    n = int(min(x.size, y.size))
-    x, y = x[:n], y[:n]
+    m = int(min(x.size, y.size))
+    x, y = x[:m], y[:m]
+    glabels = list(request.groups[:m]) if request.groups else None
+    # Drop non-finite (NaN/Inf) pairs so they don't become "nan" annotations or NaN SVG coords;
+    # keep the group labels aligned to the surviving points.
+    finite = np.isfinite(x) & np.isfinite(y)
+    if glabels is not None and len(glabels) == m:
+        glabels = [g for g, ok in zip(glabels, finite, strict=False) if ok]
+    else:
+        glabels = None  # mismatched/absent group labels -> treat as ungrouped
+    x, y = x[finite], y[finite]
+    n = int(x.size)
     alpha = point_alpha(n)
 
     with plt.rc_context(mpl_rcparams(style)):
         fig, ax = plt.subplots(figsize=(3.6, 3.4))
-        if request.groups:
-            labels = list(request.groups[:n])
+        if glabels:
+            labels = glabels
             names = list(dict.fromkeys(labels))  # stable first-seen order
             for name in names:
                 gstyle = palette.assign(name)
@@ -304,7 +314,8 @@ def build_scatter_svg(
             color = palette.assign("data").color
             ax.scatter(x, y, s=26, color=color, alpha=alpha, edgecolors="none", zorder=3)
 
-        if request.fit == "linear" and n >= 3:
+        # Fit only with >=3 points AND some spread in x (linregress raises on identical x).
+        if request.fit == "linear" and n >= 3 and float(np.ptp(x)) > 0:
             fit = linfit(x, y)
             ax.fill_between(fit.xs, fit.lo, fit.hi, color="#999999", alpha=0.20, zorder=1, lw=0)
             ax.plot(fit.xs, fit.ys, color="#333333", lw=1.4, zorder=4)

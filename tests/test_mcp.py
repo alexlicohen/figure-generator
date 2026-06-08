@@ -143,3 +143,44 @@ def test_make_figure_declines_neuro_render(tmp_path):
     )
     assert data["declined"] is True
     assert "Surf Ice" in data["reason"]
+
+
+def test_make_scatter_plot_reports_stats(tmp_path):
+    req = {"x": list(range(12)), "y": [2 * i for i in range(12)], "xlabel": "x", "ylabel": "y"}
+    data = _call("make_scatter_plot", {"request": req, "out_dir": str(tmp_path / "out")})
+    assert data["svg_path"].endswith("figure.svg")
+    assert any(a["rule_id"] == "stat_reporting" for a in data["standards"]["applied_fixes"])
+
+
+def test_compose_plot_panels_figure_shared_axis(tmp_path):
+    reqs = [
+        {"groups": {"NT": [1.0, 2, 1], "ASD": [3.0, 4, 3]}, "ylabel": "DAT", "title": "ROI 1"},
+        {"groups": {"NT": [2.0, 3, 2], "ASD": [4.0, 5, 4]}, "title": "ROI 2"},
+    ]
+    data = _call("compose_plot_panels_figure", {"requests": reqs, "out_dir": str(tmp_path / "out")})
+    assert data["svg_path"].endswith("figure.svg")
+    assert (tmp_path / "out" / "figure.svg").exists()
+
+
+def test_make_graphical_abstract_local(tmp_path):
+    spec = {
+        "title": "T",
+        "sections": [
+            {"title": "A", "items": [{"title": "Cohort", "lines": ["n=10"]}]},
+        ],
+    }
+    data = _call(
+        "make_graphical_abstract",
+        {"spec": spec, "out_dir": str(tmp_path / "out"), "use_assets": False},
+    )
+    assert data["svg_path"].endswith("figure.svg")
+    assert (tmp_path / "out" / "figure.svg").exists()
+
+
+def test_check_decline_returns_render_handoff():
+    data = _call("check_decline", {"text": "plot a glass brain of the group t-map"})
+    assert data["declined"] is True
+    handoff = data["handoff"]
+    assert handoff["tool"] == "nilearn"
+    assert "cm.vik" in handoff["code"]  # standards baked into the snippet
+    assert handoff["notes"]

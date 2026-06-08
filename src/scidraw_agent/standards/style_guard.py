@@ -465,7 +465,7 @@ def _convert_pie_to_bar(root, cx, cy, recovered, style: StyleSpec) -> None:
             color = fill
         else:
             color = palette.CATEGORICAL_ORDER[i % len(palette.CATEGORICAL_ORDER)]
-        biggest = max(s[0] for s in slices)
+        biggest = max((s[0] for s in slices), default=0.0) or 1.0  # avoid /0 on degenerate pies
         rect = etree.SubElement(grp, f"{nsg}rect")
         rect.set("x", f"{x0:g}")
         rect.set("y", f"{y:g}")

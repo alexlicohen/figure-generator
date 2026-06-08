@@ -88,6 +88,40 @@ def test_scatter_colours_by_group_and_legends():
     assert any(a.rule_id == "group_shape" for a in actions)
 
 
+def test_scatter_constant_x_skips_fit_without_crashing():
+    # all-identical x would make scipy.linregress raise; the fit must be skipped, not crash
+    svg, actions = build_scatter_svg(
+        ScatterRequest(x=[2.0, 2.0, 2.0, 2.0], y=[1.0, 2.0, 3.0, 4.0]),
+        StyleSpec(),
+        PaletteRegistry(),
+    )
+    assert svg
+    assert not any("OLS fit" in a.message for a in actions)  # fit skipped (no x spread)
+
+
+def test_scatter_drops_nonfinite_points():
+    import math
+
+    x = [1.0, 2.0, math.nan, 4.0, 5.0]
+    y = [1.0, 2.0, 3.0, math.inf, 5.0]
+    svg, actions = build_scatter_svg(
+        ScatterRequest(x=x, y=y), StyleSpec(), PaletteRegistry()
+    )
+    assert "nan" not in svg.lower()  # no NaN coordinates / "nan" annotation text
+    fit = next((a for a in actions if "OLS fit" in a.message), None)
+    assert fit and "n = 3" in fit.message  # only the 3 finite pairs counted
+
+
+def test_scatter_mismatched_group_labels_fall_back_to_ungrouped():
+    # fewer labels than points -> ignore groups rather than drop points
+    svg, _ = build_scatter_svg(
+        ScatterRequest(x=[1, 2, 3, 4], y=[1, 2, 3, 4], groups=["A", "B"]),
+        StyleSpec(),
+        PaletteRegistry(),
+    )
+    assert svg  # no crash; points drawn ungrouped
+
+
 def test_compose_scatter_writes_outputs(tmp_path):
     cfg = Config(cache_dir=tmp_path / "cache")
     m = compose_scatter(

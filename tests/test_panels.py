@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from lxml import etree
 
 from scidraw_agent.compose import compose_panels, compose_plot_panels
@@ -82,6 +83,14 @@ def test_plot_panels_share_axis_and_legend():
     assert "NT" in reg.mapping and "ASD" in reg.mapping
     # geom action recorded once (deduped across panels)
     assert sum(a.rule_id == "distribution_geom" for a in actions) == 1
+
+
+def test_empty_panel_lists_raise_clearly(tmp_path):
+    cfg = Config(cache_dir=tmp_path / "cache")
+    with pytest.raises(ValueError, match="at least one"):
+        compose_panels([], tmp_path / "a", config=cfg, fetcher=None)
+    with pytest.raises(ValueError, match="at least one"):
+        compose_plot_panels([], tmp_path / "b", config=cfg)
 
 
 def test_compose_plot_panels_writes_outputs(tmp_path):

@@ -186,6 +186,8 @@ def compose_panels(
     """
     from svgutils import transform as st
 
+    if not schemas:
+        raise ValueError("compose_panels requires at least one schema.")
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
     palette = palette or PaletteRegistry(colors=list(style.categorical))  # shared across panels
@@ -374,6 +376,8 @@ def compose_plot_panels(
     """
     from .generators.data_plot import build_distribution_panels_svg
 
+    if not requests:
+        raise ValueError("compose_plot_panels requires at least one PlotRequest.")
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
     palette = palette or PaletteRegistry(colors=list(style.categorical))
