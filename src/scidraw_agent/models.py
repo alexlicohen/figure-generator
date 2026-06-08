@@ -143,23 +143,39 @@ class GAImage(BaseModel):
 
 
 class GAItem(BaseModel):
-    """One element in a section row: a titled card, an image, or a track of numbered steps."""
+    """One element in a section row: a titled card, an image, a track, or an image grid."""
 
-    kind: str = "card"  # "card" | "image" | "track"
+    kind: str = "card"  # "card" | "image" | "track" | "grid"
     title: str = ""
     lines: list[str] = Field(default_factory=list)
     steps: list[GAStep] = Field(default_factory=list)
-    image: GAImage | None = None
+    image: GAImage | None = None  # single image slot (kind="card"/"image")
+    images: list[GAImage] = Field(default_factory=list)  # montage cells (kind="grid")
+    grid_cols: int | None = None  # explicit grid columns; else chosen by count
     accent: str | None = None  # explicit accent; else cycles the house palette
     weight: float = 1.0  # relative width within the row
 
 
+class GARow(BaseModel):
+    """A left-to-right row of items joined by an optional connector."""
+
+    items: list[GAItem] = Field(default_factory=list)
+    connector: str = "none"  # between items: "arrow" | "plus" | "none"
+
+
 class GASection(BaseModel):
-    """A titled band holding a left-to-right row of items joined by an optional connector."""
+    """A titled band of one or more stacked rows.
+
+    Either set ``rows`` (multi-row), or use ``items`` + ``connector`` as a single-row shorthand.
+    """
 
     title: str
     items: list[GAItem] = Field(default_factory=list)
-    connector: str = "none"  # between items: "arrow" | "plus" | "none"
+    connector: str = "none"
+    rows: list[GARow] = Field(default_factory=list)
+
+    def as_rows(self) -> list[GARow]:
+        return self.rows or [GARow(items=self.items, connector=self.connector)]
 
 
 class GraphicalAbstract(BaseModel):
