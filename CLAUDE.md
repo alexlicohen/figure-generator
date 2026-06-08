@@ -169,9 +169,11 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
 - **Anatomical contrast fix** — `anatomical._boost_contrast` darkens pale *achromatic* asset
   fills/strokes (e.g. SciDraw's all-pale-grey pyramidal neuron that vanished on white) while
   sparing light *coloured* fills (a diagram's pale-teal regions). Light+low-channel-spread only.
-- **Paste-ready credits** (`attribution.py`) — compose writes `figure.credits.txt`: a one-line
-  legend credit + per-asset Title/Author/Source(+DOI)/License, and a `credits` block in the
-  manifest. Reused assets are credited in the figure legend, NOT the bibliography; CC-BY ⇒
+- **Paste-ready credits** (`attribution.py`) — compose writes `figure.credits.txt` + a `credits`
+  block in the manifest. Default `legend_line` is the **compact** convention (grouped by
+  source+license, titles dropped, authors as initials — CC's "reasonable to the medium");
+  `legend_line_full` keeps the full CC TASL (Title/Author/Source(+DOI)/License); plus per-asset
+  lines. Reused assets are credited in the figure legend, NOT the bibliography; CC-BY ⇒
   attribution_required. Surfaced in the CLI `_emit` and MCP `_manifest_summary`.
 - Output quality spot-checked by rendering anatomical/circuit/pipeline/data_plot with real
   assets and visually inspecting the PNGs (pipeline + data_plot were already publication-grade).
