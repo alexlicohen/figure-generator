@@ -13,7 +13,15 @@ from pathlib import Path
 from lxml import etree
 
 from .config import Config, load_config
-from .models import Credits, FigureSchema, FigureType, Manifest, PlotRequest, StandardsReport
+from .models import (
+    Credits,
+    FigureSchema,
+    FigureType,
+    GraphicalAbstract,
+    Manifest,
+    PlotRequest,
+    StandardsReport,
+)
 from .palette import PaletteRegistry
 from .router import route
 from .standards import enforce
@@ -281,6 +289,52 @@ def compose_data_plot(
         journal=style.journal,
         standards=report,
         warnings=raster_warnings,
+    )
+    (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
+    return manifest
+
+
+def compose_graphical_abstract(
+    ga: GraphicalAbstract,
+    out_dir: str | Path,
+    *,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    fetcher=None,
+    export_png: bool = True,
+    export_pdf: bool = False,
+) -> Manifest:
+    """Render a structural graphical abstract -> compliant SVG + raster + manifest + credits.
+
+    The composition is generated; images are slotted from real renders / CC assets (never an
+    image model). CC-fetched assets carry their licence into the manifest + figure.credits.txt.
+    """
+    from .generators.graphical_abstract import build_graphical_abstract_svg
+
+    config = config or load_config()
+    style = style or StyleSpec(journal=config.journal)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    svg, assets, warnings = build_graphical_abstract_svg(ga, style, fetcher)
+    cleaned, report = enforce(svg, style)
+
+    svg_path = out_dir / "figure.svg"
+    svg_path.write_text(cleaned)
+    rasters, raster_warnings = _export_raster(
+        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=export_pdf
+    )
+
+    manifest = Manifest(
+        figure_type=FigureType.STUDY_DESIGN,  # closest existing type; GA is a study overview
+        caption_seed=ga.caption_seed or ga.title,
+        svg_path=str(svg_path),
+        raster_paths=rasters,
+        journal=style.journal,
+        assets=assets,
+        standards=report,
+        credits=_write_credits(out_dir, assets),
+        warnings=warnings + raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest

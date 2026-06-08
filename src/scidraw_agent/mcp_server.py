@@ -181,6 +181,35 @@ def make_data_plot(
 
 
 @mcp.tool
+def make_graphical_abstract(
+    spec: dict,
+    out_dir: str,
+    journal: str = "nature",
+    house_style: str = "cohen",
+    use_assets: bool = True,
+) -> dict:
+    """Render a grant graphical abstract from a GraphicalAbstract spec (local, no API).
+
+    The composition (sections of cards / tracks / image slots, connectors, colour system) is
+    generated structurally — NOT an image model. Image slots take a real render ``path``
+    (preferred) or a CC ``asset_query`` fallback. Defaults to the Cohen house style.
+    """
+    from .compose import compose_graphical_abstract as _compose_ga
+    from .models import GraphicalAbstract
+    from .theme import cohen_lab
+
+    style = cohen_lab(journal) if house_style == "cohen" else StyleSpec(journal=journal)
+    config = load_config()
+    fetcher = AssetFetcher(config) if use_assets else None
+    try:
+        ga = GraphicalAbstract.model_validate(spec)
+    except ValidationError as e:
+        return {"valid": False, "errors": e.errors(include_url=False)}
+    manifest = _compose_ga(ga, out_dir, config=config, style=style, fetcher=fetcher)
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
 def compose_panels_figure(
     schemas: list[dict],
     out_dir: str,
