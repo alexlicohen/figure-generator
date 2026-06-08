@@ -4,9 +4,10 @@ Prompt-driven scientific **schematic** generator with a built-in **Design Standa
 
 Turn a text prompt — or an ingested paper Methods section / grant Specific Aims — into an
 **editable vector (SVG)** scientific schematic. Claude (Anthropic API) extracts a structured
-figure description; open CC-licensed repositories supply organic shapes (SciDraw via Zenodo
-first, then **NIH BIOART** for public-domain human/clinical anatomy, then a bioicons
-fallback); generators draw the scaffold; and every output passes
+figure description; open CC-licensed repositories supply organic shapes (SciDraw via Zenodo,
+**NIH BIOART**, bioicons, **Wikimedia Commons** for human neuroanatomy, **Health Icons**, and
+**PhyloPic** organism silhouettes — each asset's license is gated and recorded); generators
+draw the scaffold; and every output passes
 through a standards-enforcement layer that silently applies publication and
 visual-perception gold standards.
 
@@ -139,11 +140,14 @@ See `docs/standards.md` for the full rule catalog with sources.
 
 ## Coverage honesty
 
-SciDraw skews toward rodent / systems neuroscience; **NIH BIOART** (public domain) backfills
-some human/clinical anatomy (brain, neuron types, glia, blood-brain barrier), but coverage
-is still partial. When no compatible asset is found, the figure degrades gracefully to a
-**labelled placeholder** plus a warning, and (for brain/anatomy) points you at the
-real-render tools above. Imported assets that are not CC-BY-compatible (NC / ND / SA /
+SciDraw skews toward rodent / systems neuroscience. The asset chain backfills the rest:
+**NIH BIOART** (public-domain human anatomy + MRI/PET/CT hardware), **Wikimedia Commons**
+(human neuroanatomy SciDraw lacks — subcortical structures, slices, white-matter tracts; the
+Servier SMART + DBCLS donations), **Health Icons** (CC0 medical line icons), and **PhyloPic**
+(organism silhouettes for cohort panels). Coverage is still partial — when no compatible
+asset is found, the figure degrades gracefully to a **labelled placeholder** plus a warning,
+and (for brain/anatomy) points you at the real-render tools above. Imported assets that are
+not CC-BY-compatible (NC / ND / SA /
 unknown) are **flagged and excluded** by the license ledger; NIH BIOART is public domain.
 
 ## Privacy / local-first

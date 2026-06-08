@@ -94,7 +94,7 @@ The Claude **extraction** call is the only LLM step. It can run two ways:
 **Done & merged (PR #1 → `main`).** Milestones M0–M8 complete; 73 tests green; ruff clean.
 - M0 scaffold (`models` IR, `config`, `llm`) · M1 Design Standards Engine (`theme`,
   `palette`, `standards/{linter,style_guard}`) · M2 asset layer + license ledger
-  (`fetch`, `registry`, `backends/{zenodo,bioicons}`) · M3 generators + compose
+  (`fetch`, `registry`, `backends/{zenodo,bioart,bioicons,wikimedia,healthicons,phylopic}`) · M3 generators + compose
   (`generators/{circuit,pipeline,anatomical,data_plot}`, `router`, `compose`) ·
   M4 `extract` (neuro-decline gate) + `selfcheck` · M5 `ingest` + `run` · M6
   `mcp_server` + `cli` · M7 README/`scripts/setup.sh` · M8 `data_plot`.
@@ -149,6 +149,17 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
   the `{id}` path; ids interleave) — e.g. 688 pointed at item 689's MRI. All ids are now
   resolved authoritatively from each item page's RSC `filemapping` (`"SVG"` value).
 
-**Known follow-ups (not yet built):** BIOART neuro depth is genuinely shallow (no synapse /
-microglia / oligodendrocyte / spinal-cord / EEG assets exist) — degrade-gracefully handles
-the misses; expand `bioart_index.json` via the `filemapping` method if BIOART adds more.
+- **Three asset backends added (now 6 total).** Priority: Zenodo → BIOART → bioicons →
+  **Wikimedia** → **Health Icons** → **PhyloPic**.
+  - `backends/wikimedia.py` — Commons MediaWiki API; fills human neuroanatomy (thalamus,
+    hippocampus, slices, tracts; Servier SMART + DBCLS donations). Mixed-license, so per-file
+    license read from `imageinfo extmetadata` and gated (CC-BY-SA/non-free rejected); SVG-only.
+  - `backends/healthicons.py` — CC0 medical line icons via `meta-data.json` index; title
+    matches ranked before tag-only (Brain, Nerve, Skull, Head Circumference).
+  - `backends/phylopic.py` — organism silhouettes (build-versioned HATEOAS API);
+    per-image CC license mapped + gated. `backends/_text.py` holds shared token/relevance helpers.
+  - Live coverage in `test_fetch_live.py` for all three (auto-skip if a host is unreachable).
+
+**Known follow-ups (not yet built):** BIOART neuro depth is shallow (no synapse / microglia /
+spinal-cord / EEG); Wikimedia is broad but quality varies; PhyloPic matches taxonomic names
+best (common names like "mouse" may miss). All handled by graceful degradation.

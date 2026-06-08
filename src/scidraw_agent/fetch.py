@@ -73,13 +73,28 @@ class ResolveResult:
 
 def default_backends() -> list[AssetBackend]:
     # Local import avoids a circular import (backends type-only-reference HttpClient).
-    # Priority: SciDraw/Zenodo (primary, rodent/systems-neuro) -> NIH BIOART (public-domain
-    # human/clinical anatomy, the SciDraw coverage gap) -> bioicons (generic CC fallback).
+    # Priority (curated first, broad gap-fillers after):
+    #   SciDraw/Zenodo  primary, rodent/systems-neuro (CC-BY)
+    #   NIH BIOART      curated public-domain human/clinical anatomy + imaging hardware
+    #   bioicons        curated CC science icons
+    #   Wikimedia       broad human-neuroanatomy gap-filler (per-file license gate)
+    #   Health Icons    CC0 medical line icons
+    #   PhyloPic        organism silhouettes (cohort/study-design panels)
     from .backends.bioart import BioartBackend
     from .backends.bioicons import BioiconsBackend
+    from .backends.healthicons import HealthIconsBackend
+    from .backends.phylopic import PhylopicBackend
+    from .backends.wikimedia import WikimediaBackend
     from .backends.zenodo import ZenodoBackend
 
-    return [ZenodoBackend(), BioartBackend(), BioiconsBackend()]
+    return [
+        ZenodoBackend(),
+        BioartBackend(),
+        BioiconsBackend(),
+        WikimediaBackend(),
+        HealthIconsBackend(),
+        PhylopicBackend(),
+    ]
 
 
 class AssetFetcher:

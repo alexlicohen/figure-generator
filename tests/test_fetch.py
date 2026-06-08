@@ -5,6 +5,12 @@ from __future__ import annotations
 import responses
 
 from scidraw_agent.backends.bioart import FILE_API, BioartBackend
+from scidraw_agent.backends.healthicons import INDEX_URL as HI_INDEX
+from scidraw_agent.backends.healthicons import HealthIconsBackend
+from scidraw_agent.backends.phylopic import IMAGES as PP_IMAGES
+from scidraw_agent.backends.phylopic import ROOT as PP_ROOT
+from scidraw_agent.backends.phylopic import PhylopicBackend
+from scidraw_agent.backends.wikimedia import COMMONS_API, WikimediaBackend
 from scidraw_agent.backends.zenodo import ZENODO_API, ZenodoBackend
 from scidraw_agent.config import Config
 from scidraw_agent.fetch import AssetFetcher, HttpClient
@@ -202,3 +208,183 @@ def test_bioart_resolve_downloads_and_records(tmp_path):
     assert result.record.license == "public-domain"
     assert result.record.local_path
     assert any(r.title == "Pyramidal Neuron" for r in fetcher.registry.records())
+
+
+# --------------------------------------------------------------------------- #
+# Wikimedia Commons backend (broad human-neuroanatomy, mixed license -> gated)
+# --------------------------------------------------------------------------- #
+def _commons_payload():
+    return {
+        "query": {
+            "pages": {
+                "10": {
+                    "index": 1,
+                    "title": "File:Thalamus-schematic.svg",
+                    "imageinfo": [
+                        {
+                            "url": "https://upload.wikimedia.org/x/Thalamus-schematic.svg",
+                            "extmetadata": {
+                                "LicenseShortName": {"value": "CC BY-SA 3.0"},
+                                "Artist": {"value": "<a href='/u'>SA Person</a>"},
+                            },
+                        }
+                    ],
+                },
+                "11": {
+                    "index": 2,
+                    "title": "File:Thalamus diagram.png",  # non-svg -> skipped
+                    "imageinfo": [
+                        {
+                            "url": "https://upload.wikimedia.org/x/Thalamus.png",
+                            "extmetadata": {"LicenseShortName": {"value": "CC0"}},
+                        }
+                    ],
+                },
+                "12": {
+                    "index": 3,
+                    "title": "File:ThalamicNuclei.svg",
+                    "imageinfo": [
+                        {
+                            "url": "https://upload.wikimedia.org/x/ThalamicNuclei.svg",
+                            "extmetadata": {
+                                "LicenseShortName": {"value": "Public domain"},
+                                "Artist": {"value": "<b>Anatomist</b>"},
+                            },
+                        }
+                    ],
+                },
+            }
+        }
+    }
+
+
+def test_wikimedia_filters_svg_and_normalizes_license():
+    import types
+
+    http = types.SimpleNamespace(get_json=lambda url, params=None: _commons_payload())
+    recs = WikimediaBackend().search("thalamus", 10, http)
+    titles = [r.title for r in recs]
+    assert "Thalamus diagram.png" not in titles  # non-svg dropped
+    assert titles == ["Thalamus-schematic.svg", "ThalamicNuclei.svg"]  # relevance order
+    assert recs[0].license == "cc-by-sa-3.0" and not license_ok(recs[0].license)
+    assert recs[1].license == "public-domain" and license_ok(recs[1].license)
+    assert recs[1].creators == ["Anatomist"]  # HTML stripped from Artist
+
+
+@responses.activate
+def test_wikimedia_resolve_skips_sa_picks_public_domain(tmp_path):
+    responses.add(responses.GET, COMMONS_API, json=_commons_payload(), status=200)
+    responses.add(
+        responses.GET,
+        "https://upload.wikimedia.org/x/ThalamicNuclei.svg",
+        body=b"<svg xmlns='http://www.w3.org/2000/svg'/>",
+        status=200,
+    )
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[WikimediaBackend()])
+    result = fetcher.resolve("thalamus")
+    assert result.record is not None
+    assert result.record.title == "ThalamicNuclei.svg"  # CC-BY-SA one skipped
+    assert any("sa" in (r.license or "") for r in result.rejected)
+
+
+# --------------------------------------------------------------------------- #
+# Health Icons backend (CC0)
+# --------------------------------------------------------------------------- #
+_HI_INDEX = [
+    {
+        "id": "brain",
+        "category": "body",
+        "path": "body/neurology",
+        "tags": ["Neurology"],
+        "title": "Brain",
+    },
+    {"id": "skull", "category": "body", "path": "body/skull", "tags": ["Skull"], "title": "Skull"},
+    {
+        "id": "death",
+        "category": "symbols",
+        "path": "symbols/death",
+        "tags": ["Skull", "Death"],
+        "title": "Death",
+    },
+]
+
+
+def test_healthicons_title_match_ranks_before_tag_match():
+    import types
+
+    http = types.SimpleNamespace(get_json=lambda url, params=None: _HI_INDEX)
+    backend = HealthIconsBackend()
+    recs = backend.search("skull", 5, http)
+    assert recs[0].title == "Skull"  # title match beats the tag-only "Death" icon
+    assert all(r.license == "cc0-1.0" for r in recs)
+    assert recs[0].source_url.endswith("svg/outline/body/skull.svg")
+
+
+@responses.activate
+def test_healthicons_resolve_downloads(tmp_path):
+    responses.add(responses.GET, HI_INDEX, json=_HI_INDEX, status=200)
+    responses.add(
+        responses.GET,
+        "https://raw.githubusercontent.com/resolvetosavelives/healthicons/main/"
+        "public/icons/svg/outline/body/neurology.svg",
+        body=b"<svg/>",
+        status=200,
+    )
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[HealthIconsBackend()])
+    result = fetcher.resolve("brain")
+    assert result.record is not None and result.record.license == "cc0-1.0"
+    assert result.record.local_path
+
+
+# --------------------------------------------------------------------------- #
+# PhyloPic backend (organism silhouettes; per-image license)
+# --------------------------------------------------------------------------- #
+def _pp_images():
+    return {
+        "_embedded": {
+            "items": [
+                {
+                    "attribution": "NC Artist",
+                    "_links": {
+                        "license": {"href": "https://creativecommons.org/licenses/by-nc/4.0/"},
+                        "vectorFile": {"href": "https://images.phylopic.org/a/vector.svg"},
+                        "specificNode": {"title": "Mus musculus"},
+                    },
+                },
+                {
+                    "attribution": "PD Artist",
+                    "_links": {
+                        "license": {"href": "https://creativecommons.org/publicdomain/zero/1.0/"},
+                        "vectorFile": {"href": "https://images.phylopic.org/b/vector.svg"},
+                        "specificNode": {"title": "Mus musculus"},
+                    },
+                },
+            ]
+        }
+    }
+
+
+def test_phylopic_maps_licenses():
+    import types
+
+    def _get(url, params=None):
+        return {"build": 541} if url == PP_ROOT else _pp_images()
+
+    http = types.SimpleNamespace(get_json=_get)
+    recs = PhylopicBackend().search("mus musculus", 5, http)
+    assert [r.license for r in recs] == ["cc-by-nc", "cc0-1.0"]
+    assert not license_ok(recs[0].license) and license_ok(recs[1].license)
+    assert recs[1].title == "Mus musculus" and recs[1].creators == ["PD Artist"]
+
+
+@responses.activate
+def test_phylopic_resolve_skips_nc_picks_cc0(tmp_path):
+    responses.add(responses.GET, PP_ROOT, json={"build": 541}, status=200)
+    responses.add(responses.GET, PP_IMAGES, json=_pp_images(), status=200)
+    responses.add(
+        responses.GET, "https://images.phylopic.org/b/vector.svg", body=b"<svg/>", status=200
+    )
+    fetcher = AssetFetcher(Config(cache_dir=tmp_path), backends=[PhylopicBackend()])
+    result = fetcher.resolve("mus musculus")
+    assert result.record is not None and result.record.license == "cc0-1.0"
+    assert any("nc" in (r.license or "") for r in result.rejected)
