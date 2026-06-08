@@ -11,6 +11,7 @@ through ``style_guard`` in compose like every other figure.
 from __future__ import annotations
 
 import base64
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
@@ -77,15 +78,24 @@ def _accents(ga: GraphicalAbstract, style: StyleSpec) -> None:
     colors = list(style.categorical) or list(CATEGORICAL_ORDER)
     i = 0
     for sec in ga.sections:
-        for item in sec.items:
-            if not item.accent:
-                item.accent = colors[i % len(colors)]
-                i += 1
+        for row in sec.as_rows():
+            for item in row.items:
+                if not item.accent:
+                    item.accent = colors[i % len(colors)]
+                    i += 1
+
+
+def _grid_cols(item: GAItem) -> int:
+    n = max(1, len(item.images))
+    return item.grid_cols or min(n, 4)
 
 
 def _item_height(item: GAItem) -> float:
     if item.kind == "track":
         return 44 + len(item.steps) * 56 + 6
+    if item.kind == "grid":
+        rows = math.ceil(max(1, len(item.images)) / _grid_cols(item))
+        return (26 if item.title else 8) + rows * 84 + 8
     if item.kind == "image" or item.image:
         return 26 + 104 + (18 if (item.image and item.image.caption) else 6)
     return 26 + max(1, len(item.lines)) * 15 + 18
@@ -128,6 +138,28 @@ def _embed_image(img, x, y, w, h, style, fetcher) -> tuple[str, AssetRecord | No
 def _draw_item(c, item, x, y, w, h, style, fetcher):
     assets, warnings = [], []
     accent = item.accent or "#2F5C8A"
+    if item.kind == "grid":
+        c.rrect(x, y, w, h, stroke=accent, sw=1.6)
+        top = y + 26 if item.title else y + 8
+        if item.title:
+            c.header_bar(x, y, w, item.title, accent)
+        n = max(1, len(item.images))
+        cols = _grid_cols(item)
+        rows = math.ceil(n / cols)
+        pad = 8.0
+        gw = (w - pad * (cols + 1)) / cols
+        gh = (y + h - top - pad * (rows + 1)) / rows
+        for i, img in enumerate(item.images):
+            r, cc = divmod(i, cols)
+            frag, rec, warn = _embed_image(
+                img, x + pad + cc * (gw + pad), top + pad + r * (gh + pad), gw, gh, style, fetcher
+            )
+            c.raw(frag)
+            if rec:
+                assets.append(rec)
+            if warn:
+                warnings.append(warn)
+        return assets, warnings
     if item.kind == "track":
         c.rrect(x, y, w, h, fill=PANEL, stroke=accent, sw=1.8, rx=12)
         c.header_bar(x, y, w, item.title, accent, hh=32)
@@ -182,6 +214,29 @@ def _connector(c, kind, x, cy):
         )
 
 
+def _draw_row(c, row, y, W, style, fetcher) -> tuple[float, list, list]:
+    """Lay a single row of items left-to-right; return (row_height, assets, warnings)."""
+    items = row.items
+    if not items:
+        return 0.0, [], []
+    gap = {"arrow": 50.0, "plus": 40.0}.get(row.connector, 26.0)
+    avail = (W - 2 * M) - gap * max(0, len(items) - 1)
+    wsum = sum(it.weight for it in items) or 1.0
+    row_h = max(_item_height(it) for it in items)
+    assets, warnings = [], []
+    x = M
+    for idx, item in enumerate(items):
+        iw = avail * (item.weight / wsum)
+        a, w_ = _draw_item(c, item, x, y, iw, row_h, style, fetcher)
+        assets += a
+        warnings += w_
+        x += iw
+        if idx < len(items) - 1:
+            _connector(c, row.connector, x + gap / 2, y + row_h / 2)
+            x += gap
+    return row_h, assets, warnings
+
+
 def build_graphical_abstract_svg(
     ga: GraphicalAbstract, style: StyleSpec, fetcher: AssetFetcher | None = None
 ) -> tuple[str, list[AssetRecord], list[str]]:
@@ -201,23 +256,13 @@ def build_graphical_abstract_svg(
         c.text(M + 14, y + 2, sec.title, size=14, weight="bold")
         y += 16
 
-        items = sec.items
-        gap = {"arrow": 50.0, "plus": 40.0}.get(sec.connector, 26.0)
-        avail = (W - 2 * M) - gap * max(0, len(items) - 1)
-        wsum = sum(it.weight for it in items) or 1.0
-        row_h = max((_item_height(it) for it in items), default=80.0)
-
-        x = M
-        for idx, item in enumerate(items):
-            iw = avail * (item.weight / wsum)
-            a, w_ = _draw_item(c, item, x, y, iw, row_h, style, fetcher)
+        rows = sec.as_rows()
+        for ri, row in enumerate(rows):
+            row_h, a, w_ = _draw_row(c, row, y, W, style, fetcher)
             assets += a
             warnings += w_
-            x += iw
-            if idx < len(items) - 1:
-                _connector(c, sec.connector, x + gap / 2, y + row_h / 2)
-                x += gap
-        y += row_h + 30
+            y += row_h + (14 if ri < len(rows) - 1 else 0)
+        y += 30
 
     H = y
     svg = (

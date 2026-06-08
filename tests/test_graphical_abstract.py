@@ -12,6 +12,7 @@ from scidraw_agent.generators.graphical_abstract import build_graphical_abstract
 from scidraw_agent.models import (
     GAImage,
     GAItem,
+    GARow,
     GASection,
     GAStep,
     GraphicalAbstract,
@@ -98,3 +99,46 @@ def test_compose_writes_svg_credits_and_records_placeholder(tmp_path):
     # the unfilled slot is recorded as a placeholder asset + warning
     assert any(a.is_placeholder for a in manifest.assets)
     assert any("unfilled" in w for w in manifest.warnings)
+
+
+def test_multirow_section_stacks_rows():
+    ga = GraphicalAbstract(
+        sections=[
+            GASection(
+                title="A",
+                rows=[
+                    GARow(items=[GAItem(title="r1c1"), GAItem(title="r1c2")]),
+                    GARow(connector="arrow", items=[GAItem(title="r2c1")]),
+                ],
+            )
+        ]
+    )
+    svg, _, _ = build_graphical_abstract_svg(ga, cohen_lab(), fetcher=None)
+    assert {"r1c1", "r1c2", "r2c1"} <= set(_texts(svg))
+
+
+def test_section_as_rows_backward_compat():
+    # legacy items+connector still yields one row
+    sec = GASection(title="A", items=[GAItem(title="x")], connector="plus")
+    rows = sec.as_rows()
+    assert len(rows) == 1 and rows[0].connector == "plus" and rows[0].items[0].title == "x"
+
+
+def test_image_grid_draws_all_cells():
+    ga = GraphicalAbstract(
+        sections=[
+            GASection(
+                title="A",
+                items=[
+                    GAItem(
+                        kind="grid",
+                        title="Montage",
+                        images=[GAImage(caption=f"c{i}") for i in range(4)],
+                    )
+                ],
+            )
+        ]
+    )
+    svg, _, warnings = build_graphical_abstract_svg(ga, StyleSpec(), fetcher=None)
+    assert sum("slot" in (t or "") for t in _texts(svg)) == 4  # 4 placeholder cells
+    assert len([w for w in warnings if "unfilled" in w]) == 4

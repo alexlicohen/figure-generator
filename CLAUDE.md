@@ -171,7 +171,8 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
   sparing light *coloured* fills (a diagram's pale-teal regions). Light+low-channel-spread only.
 - **Graphical-abstract generator** (`generators/graphical_abstract.py` + `compose_graphical_abstract`)
   — structural grant graphical abstracts (no image models): a `GraphicalAbstract` spec of stacked
-  titled sections holding cards / numbered tracks / image slots joined by arrow/plus connectors.
+  titled sections (each one or more `GARow`s) holding cards / numbered tracks / single image slots
+  / **image-grid montages** joined by arrow/plus connectors.
   The composition is generated in the house design system; **image slots take a real render
   `path` (preferred) or a CC `asset_query` fallback, else a labelled placeholder** — never
   generated. CC slots carry licence into the manifest/credits. CLI `scidraw abstract spec.json`,
