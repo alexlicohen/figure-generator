@@ -152,6 +152,7 @@ class GAItem(BaseModel):
     image: GAImage | None = None  # single image slot (kind="card"/"image")
     images: list[GAImage] = Field(default_factory=list)  # montage cells (kind="grid")
     grid_cols: int | None = None  # explicit grid columns; else chosen by count
+    icon: str | None = None  # Health-Icons name/query, drawn small in the accent colour
     accent: str | None = None  # explicit accent; else cycles the house palette
     weight: float = 1.0  # relative width within the row
 
@@ -188,7 +189,11 @@ class GraphicalAbstract(BaseModel):
     title: str = ""
     sections: list[GASection] = Field(default_factory=list)
     caption_seed: str = ""
-    width: float = 1200.0
+    # Column width: "full" | "half" | "third" of the page (figures are rarely full width).
+    # Narrow widths reflow multi-item rows to stack vertically. ``width`` is an explicit px
+    # override if set (>0); otherwise ``column`` chooses it.
+    column: str = "half"
+    width: float = 0.0
 
 
 # --------------------------------------------------------------------------- #

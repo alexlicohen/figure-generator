@@ -186,13 +186,15 @@ def make_graphical_abstract(
     out_dir: str,
     journal: str = "nature",
     house_style: str = "cohen",
+    column: str = "half",
     use_assets: bool = True,
 ) -> dict:
     """Render a grant graphical abstract from a GraphicalAbstract spec (local, no API).
 
-    The composition (sections of cards / tracks / image slots, connectors, colour system) is
-    generated structurally — NOT an image model. Image slots take a real render ``path``
-    (preferred) or a CC ``asset_query`` fallback. Defaults to the Cohen house style.
+    The composition (sections of cards / tracks / image slots / grids, connectors, colour
+    system, icons) is generated structurally — NOT an image model. Image slots take a real
+    render ``path`` (preferred) or a CC ``asset_query`` fallback. ``column`` ("full" | "half" |
+    "third") sets the page width; narrow widths reflow rows to stack. Defaults to Cohen style.
     """
     from .compose import compose_graphical_abstract as _compose_ga
     from .models import GraphicalAbstract
@@ -205,7 +207,7 @@ def make_graphical_abstract(
         ga = GraphicalAbstract.model_validate(spec)
     except ValidationError as e:
         return {"valid": False, "errors": e.errors(include_url=False)}
-    manifest = _compose_ga(ga, out_dir, config=config, style=style, fetcher=fetcher)
+    manifest = _compose_ga(ga, out_dir, config=config, style=style, fetcher=fetcher, column=column)
     return _manifest_summary(manifest)
 
 

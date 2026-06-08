@@ -142,3 +142,36 @@ def test_image_grid_draws_all_cells():
     svg, _, warnings = build_graphical_abstract_svg(ga, StyleSpec(), fetcher=None)
     assert sum("slot" in (t or "") for t in _texts(svg)) == 4  # 4 placeholder cells
     assert len([w for w in warnings if "unfilled" in w]) == 4
+
+
+def test_column_width_and_reflow():
+    from scidraw_agent.generators.graphical_abstract import COLUMN_PX
+
+    def dims(col):
+        ga = GraphicalAbstract(
+            column=col,
+            sections=[
+                GASection(
+                    title="Out",
+                    connector="plus",
+                    items=[GAItem(title="A"), GAItem(title="B"), GAItem(title="C")],
+                )
+            ],
+        )
+        root = etree.fromstring(build_graphical_abstract_svg(ga, cohen_lab(), None)[0].encode())
+        return float(root.get("width")), float(root.get("height"))
+
+    fw, fh = dims("full")
+    tw, th = dims("third")
+    assert fw == COLUMN_PX["full"] and tw == COLUMN_PX["third"]  # column widths honoured
+    assert th > fh  # third-column reflows the 3 cards from one row to a vertical stack
+
+
+def test_card_icon_recoloured_and_missing_icon_warns():
+    # no fetcher -> icon can't resolve -> graceful warning, no crash
+    ga = GraphicalAbstract(
+        sections=[GASection(title="C", items=[GAItem(title="Outcome", icon="brain")])]
+    )
+    svg, _, warnings = build_graphical_abstract_svg(ga, cohen_lab(), fetcher=None)
+    assert "Outcome" in _texts(svg)
+    assert any("icon not found" in w for w in warnings)

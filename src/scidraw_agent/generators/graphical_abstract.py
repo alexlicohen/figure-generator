@@ -27,6 +27,54 @@ if TYPE_CHECKING:
 FONT_FALLBACK = "Arial, Helvetica, sans-serif"
 MUTE, HAIR, PANEL = "#5B6B7B", "#C9D2DA", "#F4F6F8"
 M = 24.0  # outer margin
+MIN_ITEM_W = 200.0  # below this, a row's items reflow to stack vertically
+# Column width of the page: figures are rarely full width (most are half / third column).
+COLUMN_PX = {"full": 1180.0, "half": 660.0, "third": 440.0}
+ICON_PX = 34.0
+
+
+def _resolve_icon(query: str | None, fetcher) -> str | None:
+    """Fetch a clean CC0 Health-Icons line icon for ``query`` (cached); None if unavailable."""
+    if not (query and fetcher):
+        return None
+    try:
+        from ..backends.healthicons import HealthIconsBackend
+
+        for rec in HealthIconsBackend().search(query, 3, fetcher.http):
+            if fetcher.registry.license_ok(rec.license):
+                return fetcher.registry.get_or_download(rec, fetcher.http.get_bytes).local_path
+    except Exception:
+        return None
+    return None
+
+
+def _embed_icon(path: str, x: float, y: float, size: float, accent: str) -> str:
+    """Embed an icon recoloured to ``accent`` (Health-Icons are fill-based monochrome)."""
+    try:
+        from lxml import etree as _et
+
+        root = _et.fromstring(Path(path).read_bytes())
+    except Exception:
+        return ""
+    for el in root.iter():
+        for attr in ("fill", "stroke"):
+            v = el.get(attr)
+            if v is not None and v != "none":
+                el.set(attr, accent)
+        tag = el.tag
+        local = tag.split("}")[-1] if isinstance(tag, str) else ""
+        if local in ("path", "circle", "rect", "polygon", "ellipse") and el.get("fill") is None:
+            el.set("fill", accent)
+    if not root.get("viewBox"):
+        root.set("viewBox", "0 0 48 48")
+    root.set("x", f"{x:g}")
+    root.set("y", f"{y:g}")
+    root.set("width", f"{size:g}")
+    root.set("height", f"{size:g}")
+    root.set("preserveAspectRatio", "xMidYMid meet")
+    from lxml import etree as _et2
+
+    return _et2.tostring(root).decode()
 
 
 def _white_text(accent: str) -> str:
@@ -98,7 +146,7 @@ def _item_height(item: GAItem) -> float:
         return (26 if item.title else 8) + rows * 84 + 8
     if item.kind == "image" or item.image:
         return 26 + 104 + (18 if (item.image and item.image.caption) else 6)
-    return 26 + max(1, len(item.lines)) * 15 + 18
+    return 26 + (ICON_PX + 8 if item.icon else 0) + max(1, len(item.lines)) * 15 + 18
 
 
 def _embed_image(img, x, y, w, h, style, fetcher) -> tuple[str, AssetRecord | None, str | None]:
@@ -198,8 +246,19 @@ def _draw_item(c, item, x, y, w, h, style, fetcher):
         if cap:
             c.text(x + w / 2, y + h - 10, cap, size=9.5, fill=MUTE, anchor="middle")
     else:
-        for i, line in enumerate(item.lines):
-            c.text(x + 12, cy + 16 + i * 15, line, size=10.5)
+        text_top = cy + 16
+        if item.icon:
+            ipath = _resolve_icon(item.icon, fetcher)
+            if ipath:
+                c.raw(_embed_icon(ipath, x + w / 2 - ICON_PX / 2, cy + 6, ICON_PX, accent))
+            else:
+                warnings.append(f"icon not found: {item.icon}")
+            text_top = cy + ICON_PX + 20
+            for i, line in enumerate(item.lines):  # centred under the icon
+                c.text(x + w / 2, text_top + i * 14, line, size=10.5, anchor="middle")
+        else:
+            for i, line in enumerate(item.lines):
+                c.text(x + 12, text_top + i * 15, line, size=10.5)
     return assets, warnings
 
 
@@ -214,14 +273,45 @@ def _connector(c, kind, x, cy):
         )
 
 
+def _connector_v(c, kind, cx, y):
+    if kind == "plus":
+        c.text(cx, y + 26, "+", size=24, weight="bold", fill=MUTE, anchor="middle")
+    elif kind == "arrow":
+        c.f.append(
+            f'<line x1="{cx:g}" y1="{y + 6:g}" x2="{cx:g}" y2="{y + 30:g}" stroke="{MUTE}" '
+            f'stroke-width="2.4"/><polygon points="{cx - 6:g},{y + 30:g} {cx + 6:g},{y + 30:g} '
+            f'{cx:g},{y + 38:g}" fill="{MUTE}"/>'
+        )
+
+
+def _draw_row_vertical(c, row, y, W, style, fetcher) -> tuple[float, list, list]:
+    """Narrow column: stack the row's items full-width with vertical connectors between them."""
+    iw = W - 2 * M
+    vgap = {"arrow": 42.0, "plus": 36.0}.get(row.connector, 16.0)
+    cy, assets, warnings = y, [], []
+    for idx, item in enumerate(row.items):
+        ih = _item_height(item)
+        a, w_ = _draw_item(c, item, M, cy, iw, ih, style, fetcher)
+        assets += a
+        warnings += w_
+        cy += ih
+        if idx < len(row.items) - 1:
+            _connector_v(c, row.connector, M + iw / 2, cy)
+            cy += vgap
+    return cy - y, assets, warnings
+
+
 def _draw_row(c, row, y, W, style, fetcher) -> tuple[float, list, list]:
-    """Lay a single row of items left-to-right; return (row_height, assets, warnings)."""
+    """Lay a single row of items left-to-right; reflow to vertical when too narrow."""
     items = row.items
     if not items:
         return 0.0, [], []
     gap = {"arrow": 50.0, "plus": 40.0}.get(row.connector, 26.0)
     avail = (W - 2 * M) - gap * max(0, len(items) - 1)
     wsum = sum(it.weight for it in items) or 1.0
+    smallest = min(avail * (it.weight / wsum) for it in items)
+    if len(items) > 1 and smallest < MIN_ITEM_W:
+        return _draw_row_vertical(c, row, y, W, style, fetcher)
     row_h = max(_item_height(it) for it in items)
     assets, warnings = [], []
     x = M
@@ -242,14 +332,16 @@ def build_graphical_abstract_svg(
 ) -> tuple[str, list[AssetRecord], list[str]]:
     _accents(ga, style)
     c = _Canvas(style)
-    W = ga.width
+    W = ga.width if ga.width and ga.width > 0 else COLUMN_PX.get(ga.column, COLUMN_PX["half"])
     assets: list[AssetRecord] = []
     warnings: list[str] = []
 
     y = M
     if ga.title:
-        c.text(W / 2, y + 6, ga.title, size=16, weight="bold", anchor="middle")
-        y += 30
+        # scale the title down so a long title still fits a narrow column
+        tsize = max(11.0, min(16.0, (W - 2 * M) / (0.52 * max(1, len(ga.title)))))
+        c.text(W / 2, y + 6, ga.title, size=tsize, weight="bold", anchor="middle")
+        y += tsize + 14
 
     for sec in ga.sections:
         c.f.append(f'<rect x="{M:g}" y="{y - 12:g}" width="6" height="18" rx="2" fill="{c.ink}"/>')
