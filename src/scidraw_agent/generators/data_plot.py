@@ -74,18 +74,17 @@ def point_alpha(n: int) -> float:
     return float(np.clip(1000.0 / max(n, 1), 0.3, 0.9))
 
 
-def build_distribution_svg(
-    request: PlotRequest, style: StyleSpec, palette: PaletteRegistry
-) -> tuple[str, list[StandardsAction]]:
-    """Render a compliant distribution plot. Returns (svg, standards actions)."""
+def _draw_distribution(ax, request: PlotRequest, style: StyleSpec, palette, rng) -> list:
+    """Draw one distribution request onto ``ax`` (no ylabel/title — the caller owns those).
+
+    Shared by the single-figure builder and the shared-axis panel builder, so a panel and a
+    standalone plot enforce identical distribution rigor. Returns the standards actions.
+    """
     actions: list[StandardsAction] = []
     groups = list(request.groups.items())
-    rng = np.random.default_rng(0)
-
     superplot = bool(
         request.replicates and any(len(set(request.replicates.get(g, []))) >= 3 for g, _ in groups)
     )
-
     if request.force_kind == "bar":
         if not style.is_overridden(RuleId.NO_DYNAMITE):
             raise DynamitePlotError()
@@ -95,41 +94,31 @@ def build_distribution_svg(
             )
         )
 
+    positions = list(range(1, len(groups) + 1))
+    pos = {name: x for x, (name, _) in zip(positions, groups, strict=False)}
+    arrs = {name: np.asarray(values, dtype=float) for name, values in groups}
+    for x, (name, _values) in zip(positions, groups, strict=False):
+        arr = arrs[name]
+        color = palette.assign(name).color
+        if request.force_kind == "bar":
+            self_bar(ax, x, arr, color)
+            continue
+        if superplot:
+            self_superplot(ax, x, arr, request.replicates.get(name, []), rng)
+        else:
+            self_geom(ax, x, arr, color, rng)
+
     comparisons: list[Comparison] = []
-    with plt.rc_context(mpl_rcparams(style)):
-        fig, ax = plt.subplots(figsize=(max(3.0, 1.3 * len(groups) + 1), 3.2))
-        positions = list(range(1, len(groups) + 1))
-        pos = {name: x for x, (name, _) in zip(positions, groups, strict=False)}
-        arrs = {name: np.asarray(values, dtype=float) for name, values in groups}
+    if request.annotate_stats and request.force_kind != "bar" and len(groups) >= 2:
+        comparisons = _sig_brackets(ax, pos, arrs, _comparison_pairs(request), request)
 
-        for x, (name, _values) in zip(positions, groups, strict=False):
-            arr = arrs[name]
-            color = palette.assign(name).color
-            if request.force_kind == "bar":
-                self_bar(ax, x, arr, color)
-                continue
-            if superplot:
-                self_superplot(ax, x, arr, request.replicates.get(name, []), rng)
-            else:
-                self_geom(ax, x, arr, color, rng)
-
-        if request.annotate_stats and request.force_kind != "bar" and len(groups) >= 2:
-            comparisons = _sig_brackets(ax, pos, arrs, _comparison_pairs(request), request)
-
-        ax.set_xticks(positions)
-        labels = [g for g, _ in groups]
-        if request.annotate_n:
-            labels = [f"{g}\n(n={len(arrs[g])})" for g in labels]
-        ax.set_xticklabels(labels)
-        ax.set_ylabel(request.ylabel)
-        if request.xlabel:
-            ax.set_xlabel(request.xlabel)
-        if request.title:
-            ax.set_title(request.title)
-
-        buf = io.StringIO()
-        fig.savefig(buf, format="svg")
-        plt.close(fig)
+    ax.set_xticks(positions)
+    labels = [g for g, _ in groups]
+    if request.annotate_n:
+        labels = [f"{g}\n(n={len(arrs[g])})" for g in labels]
+    ax.set_xticklabels(labels)
+    if request.xlabel:
+        ax.set_xlabel(request.xlabel)
 
     if superplot:
         actions.append(_action(RuleId.SUPERPLOT, "Nested replicates rendered as a SuperPlot."))
@@ -144,8 +133,90 @@ def build_distribution_svg(
         )
     for cmp in comparisons:
         actions.append(_action(RuleId.STAT_REPORTING, cmp.annotation))
+    return actions
 
+
+def build_distribution_svg(
+    request: PlotRequest, style: StyleSpec, palette: PaletteRegistry
+) -> tuple[str, list[StandardsAction]]:
+    """Render a compliant distribution plot. Returns (svg, standards actions)."""
+    rng = np.random.default_rng(0)
+    with plt.rc_context(mpl_rcparams(style)):
+        fig, ax = plt.subplots(figsize=(max(3.0, 1.3 * len(request.groups) + 1), 3.2))
+        actions = _draw_distribution(ax, request, style, palette, rng)
+        ax.set_ylabel(request.ylabel)
+        if request.title:
+            ax.set_title(request.title)
+        buf = io.StringIO()
+        fig.savefig(buf, format="svg")
+        plt.close(fig)
     return buf.getvalue(), actions
+
+
+def build_distribution_panels_svg(
+    requests: list[PlotRequest],
+    style: StyleSpec,
+    palette: PaletteRegistry,
+    *,
+    shared_y: bool = True,
+) -> tuple[str, list[StandardsAction]]:
+    """Tile distribution plots as subplots that **share a y-axis** with one **shared legend**.
+
+    The natural multi-panel for the lab's box/violin-across-conditions figures: a common
+    y-scale makes panels directly comparable, the group→colour legend is drawn once, and the
+    shared PaletteRegistry keeps each group's colour stable across panels. Returns (svg,
+    deduplicated standards actions). Panel letters (A, B, C…) are added per subplot.
+    """
+    from matplotlib.lines import Line2D
+
+    rng = np.random.default_rng(0)
+    n = len(requests)
+    widths = [max(2.2, 1.0 * len(r.groups) + 0.8) for r in requests]
+    actions: list[StandardsAction] = []
+    with plt.rc_context(mpl_rcparams(style)):
+        fig, axes = plt.subplots(
+            1, n, figsize=(sum(widths), 3.4), sharey=shared_y,
+            gridspec_kw={"width_ratios": widths},
+        )
+        axes = list(np.atleast_1d(axes))
+        letter_pt = style.preset.default_font_pt + 5
+        for i, (ax, req) in enumerate(zip(axes, requests, strict=False)):
+            actions += _draw_distribution(ax, req, style, palette, rng)
+            ax.set_title(chr(ord("A") + i), loc="left", fontweight="bold", fontsize=letter_pt)
+            if req.title:
+                ax.set_title(req.title, loc="center")
+        axes[0].set_ylabel(requests[0].ylabel)
+
+        names: list[str] = []
+        for r in requests:
+            for g in r.groups:
+                if g not in names:
+                    names.append(g)
+        if len(names) >= 2:
+            handles = [
+                Line2D(
+                    [0], [0], marker=_MPL_MARKER.get(palette.assign(g).shape, "o"),
+                    linestyle="", color=palette.assign(g).color, label=g,
+                )
+                for g in names
+            ]
+            fig.legend(
+                handles=handles, loc="lower center", ncol=min(len(names), 5),
+                frameon=False, bbox_to_anchor=(0.5, -0.04),
+            )
+        fig.tight_layout()
+        buf = io.StringIO()
+        fig.savefig(buf, format="svg", bbox_inches="tight")
+        plt.close(fig)
+
+    # dedup the per-panel actions (geom/overplot repeat across panels) for a clean manifest
+    seen, deduped = set(), []
+    for a in actions:
+        key = (a.rule_id, a.message)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(a)
+    return buf.getvalue(), deduped
 
 
 # -- significance brackets --------------------------------------------------- #

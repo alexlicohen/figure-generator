@@ -64,8 +64,11 @@ scidraw plot data.json --out fig --format pdf --format eps --format tiff --width
 # real-data neuroimaging render: a standards-baked nilearn / Surf Ice snippet, not a schematic
 scidraw render-snippet "glass brain of the group t-map" --journal nature
 
-# multi-panel figure from a JSON list of schemas (shared palette, A/B/C letters)
-scidraw panels schemas.json --out fig
+# multi-panel figure from a JSON list of schemas — grid layout, shared palette + legend
+scidraw panels schemas.json --out fig --ncols 2
+
+# data-plot panels sharing a y-axis + one legend (box/violin across conditions, directly comparable)
+scidraw plot-panels rois.json --out fig     # rois.json: [PlotRequest, PlotRequest, ...]
 
 # grant graphical abstract (structural, no image models) — image slots take your own renders
 scidraw abstract abstract.json --out fig --style cohen

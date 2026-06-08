@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from .compose import compose_data_plot as _compose_data_plot
 from .compose import compose_figure as _compose_figure
 from .compose import compose_panels as _compose_panels
+from .compose import compose_plot_panels as _compose_plot_panels
 from .compose import compose_scatter as _compose_scatter
 from .config import load_config
 from .extract import NeuroDeclineError, extract, neuro_decline_trigger
@@ -305,13 +306,16 @@ def compose_panels_figure(
     journal: str = "nature",
     allow_overrides: list[str] | None = None,
     use_assets: bool = True,
+    ncols: int = 0,
+    shared_legend: bool = True,
     formats: list[str] | None = None,
     figure_width: str = "none",
 ) -> dict:
     """Tile multiple FigureSchemas into one multi-panel figure (A/B/C ...) (local, no API).
 
-    A shared palette keeps each group's colour stable across panels. ``use_assets`` fetches
-    CC-licensed organic assets for anatomical panels.
+    Panels lay out in a grid (``ncols``; 0 = auto, ~square). A shared palette keeps each group's
+    colour stable across panels and ``shared_legend`` draws one group→colour legend for the
+    figure. ``use_assets`` fetches CC-licensed organic assets for anatomical panels.
     """
     style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
     config = load_config()
@@ -323,10 +327,41 @@ def compose_panels_figure(
     try:
         manifest = _compose_panels(
             figs, out_dir, config=config, style=style, fetcher=fetcher,
+            ncols=ncols or None, shared_legend=shared_legend,
             **_export_kwargs(formats, figure_width),
         )
     except StyleGuardBlocked as e:
         return {"blocked": [a.model_dump() for a in e.actions]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def compose_plot_panels_figure(
+    requests: list[dict],
+    out_dir: str,
+    journal: str = "nature",
+    shared_y: bool = True,
+    formats: list[str] | None = None,
+    figure_width: str = "none",
+) -> dict:
+    """Tile distribution plots as subplots sharing a y-axis + one shared legend (local, no API).
+
+    ``requests`` is a list of PlotRequest dicts. A common y-scale makes the panels directly
+    comparable (box/violin across conditions) and the group→colour legend is drawn once. Same
+    distribution rigor as make_data_plot per panel; force_kind="bar" blocks without override.
+    """
+    style = StyleSpec(journal=journal)
+    try:
+        reqs = [PlotRequest.model_validate(r) for r in requests]
+    except ValidationError as e:
+        return {"valid": False, "errors": e.errors(include_url=False)}
+    try:
+        manifest = _compose_plot_panels(
+            reqs, out_dir, config=load_config(), style=style, shared_y=shared_y,
+            **_export_kwargs(formats, figure_width),
+        )
+    except DynamitePlotError as e:
+        return {"blocked": [{"rule_id": "no_dynamite", "message": str(e)}]}
     return _manifest_summary(manifest)
 
 

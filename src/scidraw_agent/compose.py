@@ -47,6 +47,43 @@ def _viewport(svg: str) -> tuple[float, float]:
     return num(root.get("width")), num(root.get("height"))
 
 
+def _shared_legend_group(palette, x0: float, y0: float, max_w: float, style):
+    """Build one figure-level group→colour legend (swatch + label), wrapping to ``max_w``.
+
+    Returns (lxml <g> element, height) — or (None, 0) when fewer than two groups appeared, so
+    a single-group figure isn't given a redundant legend.
+    """
+    groups = list(palette.mapping.items())
+    if len(groups) < 2:
+        return None, 0.0
+    ns = "{http://www.w3.org/2000/svg}"
+    g = etree.Element(f"{ns}g")
+    g.set("class", "panel-legend")
+    sw, pad, gap_x = 14.0, 6.0, 24.0
+    fs = style.default_font_px
+    x, y, row_h = x0, y0, fs + 10
+    for name, gstyle in groups:
+        label_w = sw + pad + 0.62 * fs * len(name) + gap_x
+        if x > x0 and x + label_w > x0 + max_w:
+            x, y = x0, y + row_h
+        rect = etree.SubElement(g, f"{ns}rect")
+        rect.set("x", f"{x:g}")
+        rect.set("y", f"{y:g}")
+        rect.set("width", f"{sw:g}")
+        rect.set("height", f"{sw:g}")
+        rect.set("rx", "2")
+        rect.set("fill", gstyle.color)
+        text = etree.SubElement(g, f"{ns}text")
+        text.set("x", f"{x + sw + pad:g}")
+        text.set("y", f"{y + sw * 0.82:g}")
+        text.set("font-size", f"{fs:g}")
+        text.set("font-family", style.font_family)
+        text.set("fill", style.node_ink)
+        text.text = name
+        x += label_w
+    return g, (y - y0) + row_h
+
+
 def _write_credits(out_dir: Path, assets: list) -> Credits:
     """Build paste-ready attribution, write figure.credits.txt, and return it for the manifest."""
     from .attribution import build_credits, credits_text
@@ -132,6 +169,8 @@ def compose_panels(
     style: StyleSpec | None = None,
     fetcher=None,
     palette: PaletteRegistry | None = None,
+    ncols: int | None = None,
+    shared_legend: bool = True,
     export_png: bool = True,
     export_pdf: bool = False,
     export_eps: bool = False,
@@ -140,8 +179,10 @@ def compose_panels(
 ) -> Manifest:
     """Tile multiple figures into one multi-panel SVG with A/B/C letters.
 
-    One shared PaletteRegistry is used across panels, so a group keeps the same colour in
-    every panel (stable group->colour mapping).
+    Panels are laid out in a grid (``ncols``; defaults to roughly square), not a single row.
+    One shared PaletteRegistry is used across panels, so a group keeps the same colour in every
+    panel; when ``shared_legend`` and >=2 groups appear, one group->colour legend is drawn for
+    the whole figure (instead of repeating per panel).
     """
     from svgutils import transform as st
 
@@ -167,37 +208,57 @@ def compose_panels(
             report_total.warnings.extend(report.warnings)
             report_total.overrides.extend(report.overrides)
 
-    letter_gap, panel_gap, top = 22.0, 36.0, 6.0
-    x_cursor = 0.0
-    max_h = 0.0
+    import math
+
+    letter_gap, gap, top, left = 22.0, 36.0, 6.0, 6.0
+    n = len(panels)
+    cols = ncols or max(1, min(n, math.ceil(math.sqrt(n))))
+    rows = math.ceil(n / cols)
+    dims = [_viewport(s) for s in panels]
+    col_w = [0.0] * cols
+    row_h = [0.0] * rows
+    for i, (w, h) in enumerate(dims):
+        r, c = divmod(i, cols)
+        col_w[c] = max(col_w[c], w)
+        row_h[r] = max(row_h[r], h)
+    col_x, acc = [], left
+    for c in range(cols):
+        col_x.append(acc)
+        acc += col_w[c] + gap
+    row_top, acc = [], top
+    for r in range(rows):
+        acc += letter_gap
+        row_top.append(acc)
+        acc += row_h[r] + gap
+
     elements = []
     for i, svg in enumerate(panels):
-        w, h = _viewport(svg)
-        fig = st.fromstring(svg)
-        root = fig.getroot()
-        root.moveto(x_cursor, top + letter_gap)
+        r, c = divmod(i, cols)
+        root = st.fromstring(svg).getroot()
+        root.moveto(col_x[c], row_top[r])
         elements.append(root)
         elements.append(
             st.TextElement(
-                x_cursor + 2,
-                top + letter_gap - 6,
-                chr(ord("A") + i),
-                size=16,
-                weight="bold",
-                font="Arial",
+                col_x[c] + 2, row_top[r] - 6, chr(ord("A") + i),
+                size=16, weight="bold", font="Arial",
             )
         )
-        x_cursor += w + panel_gap
-        max_h = max(max_h, h)
 
-    total_w = max(1.0, x_cursor - panel_gap)
-    total_h = top + letter_gap + max_h + 6
-    base = st.SVGFigure(f"{total_w}px", f"{total_h}px")
+    grid_w = max(1.0, (col_x[-1] + col_w[-1]))
+    last_r = (n - 1) // cols
+    grid_bottom = row_top[last_r] + row_h[last_r]
+
+    base = st.SVGFigure(f"{grid_w}px", f"{grid_bottom + 6}px")
     base.append(elements)
-    combined = base.to_str().decode()
+    root = etree.fromstring(base.to_str())
 
-    # ensure width/height/viewBox for raster + final guard, then enforce once more
-    root = etree.fromstring(combined.encode())
+    total_w, total_h = grid_w, grid_bottom + 6
+    if shared_legend:
+        legend, lh = _shared_legend_group(palette, left, grid_bottom + gap * 0.5, grid_w, style)
+        if legend is not None:
+            root.append(legend)
+            total_w = max(total_w, grid_w)
+            total_h = grid_bottom + gap * 0.5 + lh + 6
     root.set("width", f"{total_w:g}")
     root.set("height", f"{total_h:g}")
     root.set("viewBox", f"0 0 {total_w:g} {total_h:g}")
@@ -267,6 +328,60 @@ def compose_data_plot(
     manifest = Manifest(
         figure_type=FigureType.DATA_PLOT,
         caption_seed=request.title,
+        svg_path=str(svg_path),
+        raster_paths=rasters,
+        journal=style.journal,
+        standards=report,
+        warnings=raster_warnings,
+    )
+    (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
+    return manifest
+
+
+def compose_plot_panels(
+    requests: list[PlotRequest],
+    out_dir: str | Path,
+    *,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    palette: PaletteRegistry | None = None,
+    shared_y: bool = True,
+    export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
+) -> Manifest:
+    """Tile distribution plots as subplots sharing a y-axis + one shared legend (local, no API).
+
+    A shared y-scale makes the panels directly comparable; the group→colour legend is drawn
+    once; a shared PaletteRegistry keeps group colours stable. Raises DynamitePlotError if any
+    panel forces a bar+SEM plot without the override.
+    """
+    from .generators.data_plot import build_distribution_panels_svg
+
+    config = config or load_config()
+    style = style or StyleSpec(journal=config.journal)
+    palette = palette or PaletteRegistry(colors=list(style.categorical))
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    svg, actions = build_distribution_panels_svg(requests, style, palette, shared_y=shared_y)
+    report = StandardsReport()
+    for a in actions:
+        report.add(a)
+    cleaned, report = enforce(svg, style, report=report)
+
+    svg_path = out_dir / "figure.svg"
+    svg_path.write_text(cleaned)
+    rasters, raster_warnings = _export_raster(
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
+    )
+
+    manifest = Manifest(
+        figure_type=FigureType.DATA_PLOT,
+        caption_seed=requests[0].title if requests else "",
         svg_path=str(svg_path),
         raster_paths=rasters,
         journal=style.journal,

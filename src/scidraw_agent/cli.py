@@ -17,6 +17,7 @@ from .compose import (
     compose_figure,
     compose_graphical_abstract,
     compose_panels,
+    compose_plot_panels,
     compose_scatter,
 )
 from .config import load_config
@@ -180,6 +181,8 @@ def panels(
     journal: str = typer.Option("nature", help="Journal preset."),
     allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
     assets: bool = typer.Option(True, help="Fetch CC assets for anatomical panels."),
+    ncols: int = typer.Option(0, help="Grid columns (0 = auto, roughly square)."),
+    shared_legend: bool = typer.Option(True, help="Draw one group→colour legend for the figure."),
     fmt: list[str] = typer.Option(
         None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
     ),
@@ -187,7 +190,8 @@ def panels(
 ) -> None:
     """Tile a JSON list of FigureSchema objects into one multi-panel figure (A/B/C ...).
 
-    A shared palette keeps each group's colour stable across panels. No Claude API call.
+    Panels lay out in a grid (``--ncols``, default ~square). A shared palette keeps each group's
+    colour stable across panels and one shared legend is drawn for the figure. No Claude API call.
     """
     raw = json.loads(schemas_path.read_text())
     schemas = [FigureSchema.model_validate(s) for s in raw]
@@ -196,11 +200,42 @@ def panels(
     try:
         manifest = compose_panels(
             schemas, out, config=config, style=_style(journal, allow_override), fetcher=fetcher,
-            **_export_kwargs(fmt, width),
+            ncols=ncols or None, shared_legend=shared_legend, **_export_kwargs(fmt, width),
         )
     except StyleGuardBlocked as e:
         for a in e.actions:
             typer.secho(f"BLOCK {a.rule_id}: {a.message}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    _emit(manifest)
+
+
+@app.command(name="plot-panels")
+def plot_panels(
+    data_path: Path,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    style: str = typer.Option("default", help="House style: 'default' or 'cohen'."),
+    shared_y: bool = typer.Option(True, help="Share the y-axis across panels (comparable)."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
+) -> None:
+    """Tile distribution plots as subplots sharing a y-axis + one shared legend.
+
+    ``data_path`` is a JSON list of PlotRequest objects. A common y-scale makes panels directly
+    comparable (box/violin across conditions); the group→colour legend is drawn once. No Claude
+    API call. ``--no-shared-y`` gives each panel its own y-axis.
+    """
+    raw = json.loads(data_path.read_text())
+    requests = [PlotRequest.model_validate(r) for r in raw]
+    try:
+        manifest = compose_plot_panels(
+            requests, out, config=load_config(), style=_style(journal, None, style),
+            shared_y=shared_y, **_export_kwargs(fmt, width),
+        )
+    except DynamitePlotError as e:
+        typer.secho(f"BLOCK no_dynamite: {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
     _emit(manifest)
 

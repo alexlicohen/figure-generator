@@ -218,10 +218,19 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
   [WARN], **bubble_area** [WARN], **text_contrast** [WARN, <4.5:1 vs white], **abbreviation_
   legend** [WARN, ≥3 abbreviations]; **group_shape** [BLOCK] guaranteed in the scatter
   generator. WARN rules verified silent on clean Cohen-styled output.
+- **Multi-panel grid + shared legend/axes (169 tests).** `compose_panels` now lays panels in a
+  **grid** (`ncols`, default ~square; was horizontal-only) and draws one **shared group→colour
+  legend** (`_shared_legend_group`, ≥2 groups). New `compose_plot_panels` /
+  `build_distribution_panels_svg` tile distribution plots as subplots **sharing a y-axis** with
+  one legend (box/violin across ROIs/conditions, directly comparable) — `_draw_distribution`
+  extracted so a panel and a standalone plot enforce identical rigor; per-panel actions deduped.
+  CLI `scidraw plot-panels` + `panels --ncols/--shared-legend`; MCP `compose_plot_panels_figure`
+  + `compose_panels_figure(ncols, shared_legend)`.
 
 **Known follow-ups (not yet built):** BIOART neuro depth is shallow (no synapse / microglia /
 spinal-cord / EEG); Wikimedia is broad but quality varies; PhyloPic matches taxonomic names
 best (common names like "mouse" may miss). Sequential pipelines get one Okabe-Ito colour per
 step (slightly rainbow) — could shade by a single hue. CMYK is a naive PIL conversion (no ICC
-profile); EPS stays RGB vector. Multi-panel grid still tiles horizontally only (no shared
-legend/axes). All handled by graceful degradation.
+profile); EPS stays RGB vector. Schematic panels still repeat each generator's own relation
+legend per panel (the shared *group* legend is deduped; relation legends are not). All handled
+by graceful degradation.

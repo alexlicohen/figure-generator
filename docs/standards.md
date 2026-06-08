@@ -72,6 +72,10 @@ overridable only via logged escape hatch), **[WARN]** (advisory), or **[DEFAULT]
   (single/double) sizes to the journal column in mm so vector physical size and raster
   px = DPI×size are both correct. TIFF is CMYK for CMYK journals (naive, non-colour-managed
   conversion — flagged; true CMYK wants the journal ICC profile).
+- **Multi-panel** — schematic panels (`compose_panels`) lay out in a grid (`ncols`) with one
+  shared group→colour legend and a palette stable across panels. Data-plot panels
+  (`compose_plot_panels`) share a y-axis so distributions are directly comparable, with the
+  group legend drawn once.
 
 ## Accessibility
 - **[BLOCK] Group → shape** — overlapping groups carry a redundant marker shape, not colour
