@@ -19,9 +19,13 @@ gracefully to the next backend / a labelled placeholder.
 Everything in BIOART is Public Domain, so the license gate always passes (recorded as
 ``public-domain`` for the manifest's provenance trail).
 
-Extending the index: open the item page on bioart.niaid.nih.gov, tick the **.svg** format
-and click Download; the request carries ``["{id}",[[{file_id}]]]`` — add
-``{"id", "file_id", "title", "keywords"}`` to ``bioart_index.json``.
+Extending the index: each item page's RSC payload embeds a ``filemapping`` object,
+``{"<group>":{"EPS":id,"SVG":id,"AI":id,"PNG":id}, ...}`` (one group per colour) — the
+authoritative SVG file id is the ``"SVG"`` value. Fetch it with
+``curl -H 'RSC: 1' https://bioart.niaid.nih.gov/bioart/<id>`` and add
+``{"id", "file_id", "title", "keywords"}`` to ``bioart_index.json``. (Do NOT guess the
+file id by offset from the preview PNG: the file proxy ignores the ``{id}`` path segment and
+ids interleave across items, so an offset guess can return a neighbouring item's asset.)
 """
 
 from __future__ import annotations

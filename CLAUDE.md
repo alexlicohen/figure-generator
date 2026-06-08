@@ -141,7 +141,14 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
 - **Live asset access verified locally:** Zenodo (the cloud sandbox's blind spot), bioicons,
   and BIOART all download real assets; `test_fetch_live.py` covers all three (auto-skip when
   a host is unreachable).
+- **Zenodo relevance fixed:** `sort=bestmatch` (not `mostviewed`) + a title-relevance gate
+  (`_title_relevant`) so a term SciDraw lacks (e.g. "thalamus") returns nothing → graceful
+  fallback, instead of a popular off-topic deposit ("pyramidal neuron" → "mouse").
+- **BIOART index expanded + corrected (14 → 23):** added neuroimaging hardware (MRI incl.
+  Neonatal, PET, CT). The original blind-probe ids were partly wrong (the file proxy ignores
+  the `{id}` path; ids interleave) — e.g. 688 pointed at item 689's MRI. All ids are now
+  resolved authoritatively from each item page's RSC `filemapping` (`"SVG"` value).
 
-**Known follow-ups (not yet built):** Zenodo full-text relevance is coarse (can return a
-loosely-related deposit for a specific query); the BIOART curated index is a focused neuro
-seed (~14 items) — extend `bioart_index.json` for broader coverage.
+**Known follow-ups (not yet built):** BIOART neuro depth is genuinely shallow (no synapse /
+microglia / oligodendrocyte / spinal-cord / EEG assets exist) — degrade-gracefully handles
+the misses; expand `bioart_index.json` via the `filemapping` method if BIOART adds more.
