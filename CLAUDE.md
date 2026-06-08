@@ -227,10 +227,19 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
   CLI `scidraw plot-panels` + `panels --ncols/--shared-legend`; MCP `compose_plot_panels_figure`
   + `compose_panels_figure(ncols, shared_legend)`.
 
+**Done since (polish pass, 173 tests):**
+- **Combined relation legend in panels.** `circuit.build_relation_legend` factored out;
+  `StyleSpec.embed_relation_legend` (default True) lets `compose_panels` suppress per-panel
+  relation legends and draw ONE combined relation legend beneath the grid (next to the shared
+  group legend). Standalone circuits keep their own.
+- **ICC-managed CMYK** (`export._to_cmyk`). With `$SCIDRAW_CMYK_ICC` / `cmyk_profile` →
+  ImageCms sRGB→CMYK (relative colorimetric) with the profile embedded in the TIFF; missing/
+  bad profile or none → naive convert with an honest, differentiated warning.
+- **Single-hue sequential pipelines** (`palette.shade_ramp`). Ungrouped `analysis_pipeline`
+  steps shade one hue light→dark by position (bypassing `palette.assign`, so the shared palette
+  isn't polluted with step ids); grouped / study-design keep the categorical mapping.
+
 **Known follow-ups (not yet built):** BIOART neuro depth is shallow (no synapse / microglia /
 spinal-cord / EEG); Wikimedia is broad but quality varies; PhyloPic matches taxonomic names
-best (common names like "mouse" may miss). Sequential pipelines get one Okabe-Ito colour per
-step (slightly rainbow) — could shade by a single hue. CMYK is a naive PIL conversion (no ICC
-profile); EPS stays RGB vector. Schematic panels still repeat each generator's own relation
-legend per panel (the shared *group* legend is deduped; relation legends are not). All handled
-by graceful degradation.
+best (common names like "mouse" may miss). EPS stays RGB vector (cairo has no CMYK vector path).
+All handled by graceful degradation.

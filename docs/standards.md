@@ -71,11 +71,15 @@ overridable only via logged escape hatch), **[WARN]** (advisory), or **[DEFAULT]
 - **Export** (`export.py`) — SVG (primary, editable) + PNG/PDF/EPS/TIFF. `figure_width`
   (single/double) sizes to the journal column in mm so vector physical size and raster
   px = DPI×size are both correct. TIFF is CMYK for CMYK journals (naive, non-colour-managed
-  conversion — flagged; true CMYK wants the journal ICC profile).
+  conversion — flagged). Set ``$SCIDRAW_CMYK_ICC`` (or pass ``cmyk_profile``) to a CMYK ICC
+  profile for a colour-managed sRGB→CMYK transform (relative colorimetric, profile embedded).
 - **Multi-panel** — schematic panels (`compose_panels`) lay out in a grid (`ncols`) with one
-  shared group→colour legend and a palette stable across panels. Data-plot panels
-  (`compose_plot_panels`) share a y-axis so distributions are directly comparable, with the
-  group legend drawn once.
+  shared group→colour legend AND one combined relation legend (per-panel relation legends are
+  suppressed), on a palette stable across panels. Data-plot panels (`compose_plot_panels`) share
+  a y-axis so distributions are directly comparable, with the group legend drawn once.
+- **Sequential pipelines** shade a single hue by step position (light→dark progression) rather
+  than one categorical colour per step (which reads as a rainbow); grouped/study-design figures
+  keep the categorical group mapping.
 
 ## Accessibility
 - **[BLOCK] Group → shape** — overlapping groups carry a redundant marker shape, not colour

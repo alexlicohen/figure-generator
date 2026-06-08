@@ -102,7 +102,8 @@ class CircuitGenerator:
                 )
 
         svg = g.pipe(format="svg").decode("utf-8")
-        svg = _append_legend(svg, relations, style)
+        if getattr(style, "embed_relation_legend", True):
+            svg = _append_legend(svg, relations, style)
         return GeneratorResult(svg=svg, warnings=_dangling_warnings(schema))
 
 
@@ -121,41 +122,35 @@ def _legend_items(relations: set[EdgeRelation]) -> list[tuple[str, str]]:
     return items
 
 
-def _append_legend(svg: str, relations: set[EdgeRelation], style: StyleSpec) -> str:
+_LEGEND_ROW_H = 18.0
+
+
+def build_relation_legend(
+    relations: set[EdgeRelation], x0: float, y0: float, style: StyleSpec
+) -> tuple[etree._Element | None, float]:
+    """Build a relation legend ``<g>`` (line + arrowhead/T-bar/dashed + label) at (x0, y0).
+
+    Returns (element, height) or (None, 0) when no relation types are present. Shared by the
+    per-figure ``_append_legend`` and the figure-level legend in ``compose_panels``, so the same
+    glyphs explain edge polarity whether a circuit is drawn alone or as a panel.
+    """
     items = _legend_items(relations)
     if not items:
-        return svg
-    root = etree.fromstring(svg.encode())
-    vb = (root.get("viewBox") or "").replace(",", " ").split()
-    if len(vb) != 4:
-        return svg
-    x0, y0, w, h = (float(v) for v in vb)
-
-    row_h, pad, gap = 18.0, 8.0, 12.0
-    legend_h = gap + pad + row_h * len(items) + pad
-    new_h = h + legend_h
-    root.set("height", f"{new_h:g}pt")
-    root.set("viewBox", f"{x0:g} {y0:g} {w:g} {new_h:g}")
+        return None, 0.0
+    g = etree.Element(f"{{{SVG_NS}}}g")
+    g.set("class", "relation-legend")
 
     def el(tag: str, **attrs) -> etree._Element:
-        e = etree.SubElement(root, f"{{{SVG_NS}}}{tag}")
+        e = etree.SubElement(g, f"{{{SVG_NS}}}{tag}")
         for k, v in attrs.items():
             e.set(k.replace("_", "-"), str(v))
         return e
 
-    lx = x0 + 8.0
-    top = h + gap + pad
     for i, (label, kind) in enumerate(items):
-        cy = top + i * row_h + row_h / 2
-        x2 = lx + 26.0
+        cy = y0 + i * _LEGEND_ROW_H + _LEGEND_ROW_H / 2
+        x2 = x0 + 26.0
         el(
-            "line",
-            x1=lx,
-            y1=cy,
-            x2=x2,
-            y2=cy,
-            stroke=EDGE_COLOR,
-            stroke_width=1.4,
+            "line", x1=x0, y1=cy, x2=x2, y2=cy, stroke=EDGE_COLOR, stroke_width=1.4,
             **({"stroke-dasharray": "5,4"} if kind == "dashed" else {}),
         )
         if kind == "tbar":
@@ -163,21 +158,36 @@ def _append_legend(svg: str, relations: set[EdgeRelation], style: StyleSpec) -> 
         else:
             # filled head = excitatory, open (white) head = modulatory
             el(
-                "polygon",
-                points=f"{x2},{cy - 4} {x2},{cy + 4} {x2 + 9},{cy}",
-                stroke=EDGE_COLOR,
-                stroke_width=1.0,
+                "polygon", points=f"{x2},{cy - 4} {x2},{cy + 4} {x2 + 9},{cy}",
+                stroke=EDGE_COLOR, stroke_width=1.0,
                 fill=("#FFFFFF" if kind == "dashed" else EDGE_COLOR),
             )
-        t = el(
-            "text",
-            x=x2 + 16.0,
-            y=cy + 4.0,
-            fill="#000000",
-            font_family=style.font_family,
-        )
+        t = el("text", x=x2 + 16.0, y=cy + 4.0, fill="#000000", font_family=style.font_family)
         t.set("font-size", "11")
         t.text = label
+    return g, _LEGEND_ROW_H * len(items)
+
+
+def relations_in(schema: FigureSchema) -> set[EdgeRelation]:
+    """The edge relation types actually used by a (circuit) schema — for a shared legend."""
+    ids = schema.entity_ids()
+    return {e.relation for e in schema.edges if e.source in ids and e.target in ids}
+
+
+def _append_legend(svg: str, relations: set[EdgeRelation], style: StyleSpec) -> str:
+    root = etree.fromstring(svg.encode())
+    vb = (root.get("viewBox") or "").replace(",", " ").split()
+    if len(vb) != 4:
+        return svg
+    x0, y0, w, h = (float(v) for v in vb)
+    pad, gap = 8.0, 12.0
+    legend, legend_body = build_relation_legend(relations, x0 + 8.0, h + gap + pad, style)
+    if legend is None:
+        return svg
+    new_h = h + gap + pad + legend_body + pad
+    root.set("height", f"{new_h:g}pt")
+    root.set("viewBox", f"{x0:g} {y0:g} {w:g} {new_h:g}")
+    root.append(legend)
     return etree.tostring(root, xml_declaration=True, encoding="utf-8").decode()
 
 

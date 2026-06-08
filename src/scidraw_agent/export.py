@@ -97,13 +97,16 @@ def export_artifacts(
     *,
     formats: list[str],
     figure_width: str = "none",
+    cmyk_profile: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Write the requested formats; return (paths, warnings).
 
     ``formats`` ⊆ {svg, png, pdf, eps, tiff}. ``figure_width`` ∈ {none, single, double} sizes
     the figure to the journal column width in mm before rendering (vector physical size +
     raster px = DPI×size). TIFF is written CMYK when the journal preset is CMYK (Science),
-    else RGB. PNG/TIFF get a white background (the guard strips the generator's frame).
+    else RGB. ``cmyk_profile`` (or ``$SCIDRAW_CMYK_ICC``) is a CMYK ICC profile path for a
+    colour-managed conversion; without it the conversion is naive (flagged). PNG/TIFF get a
+    white background (the guard strips the generator's frame).
     """
     out_dir = Path(out_dir)
     wanted = [f.lower() for f in formats]
@@ -158,14 +161,19 @@ def export_artifacts(
                 "PDF/EPS through the journal's ICC profile in Acrobat/Ghostscript at revision."
             )
     if "tiff" in wanted:
-        tpaths, twarn = _export_tiff(cairosvg, data, out_dir, dpi, preset.colorspace)
+        tpaths, twarn = _export_tiff(cairosvg, data, out_dir, dpi, preset.colorspace, cmyk_profile)
         paths += tpaths
         warnings += twarn
     return paths, warnings
 
 
-def _export_tiff(cairosvg, data, out_dir, dpi, colorspace) -> tuple[list[str], list[str]]:
-    """PNG→Pillow→TIFF (LZW), in CMYK when the journal wants it (with an honesty warning)."""
+def _export_tiff(
+    cairosvg, data, out_dir, dpi, colorspace, cmyk_profile
+) -> tuple[list[str], list[str]]:
+    """PNG→Pillow→TIFF (LZW). For CMYK journals, prefer an ICC-managed conversion when a
+    profile is available (``cmyk_profile`` or ``$SCIDRAW_CMYK_ICC``), else a naive convert."""
+    import os
+
     try:
         import io
 
@@ -175,12 +183,48 @@ def _export_tiff(cairosvg, data, out_dir, dpi, colorspace) -> tuple[list[str], l
     png = cairosvg.svg2png(bytestring=data, dpi=dpi, background_color="white")
     im = Image.open(io.BytesIO(png)).convert("RGB")
     warnings: list[str] = []
+    save_kwargs: dict = {}
     if colorspace == "CMYK":
-        im = im.convert("CMYK")  # naive, non-colour-managed
-        warnings.append(
-            "TIFF written in CMYK via a naive conversion (no ICC profile). For an accurate "
-            "proof, reconvert from the RGB master using the journal's CMYK ICC profile."
-        )
+        profile = cmyk_profile or os.environ.get("SCIDRAW_CMYK_ICC")
+        im, icc_bytes, warnings = _to_cmyk(im, profile)
+        if icc_bytes:
+            save_kwargs["icc_profile"] = icc_bytes  # embed so the TIFF is colour-managed
     p = out_dir / "figure.tiff"
-    im.save(str(p), format="TIFF", dpi=(dpi, dpi), compression="tiff_lzw")
+    im.save(str(p), format="TIFF", dpi=(dpi, dpi), compression="tiff_lzw", **save_kwargs)
     return [str(p)], warnings
+
+
+def _to_cmyk(im, profile: str | None):
+    """Convert an RGB image to CMYK. Returns (image, embedded_icc_bytes_or_None, warnings).
+
+    With a valid CMYK ICC profile → ImageCms sRGB→CMYK transform (relative colorimetric) and the
+    profile embedded. Without one (or if it can't be loaded) → naive ``convert('CMYK')`` with an
+    honest warning that it isn't colour-managed.
+    """
+    if profile and Path(profile).exists():
+        try:
+            from PIL import ImageCms
+
+            src = ImageCms.createProfile("sRGB")
+            dst = ImageCms.getOpenProfile(profile)
+            transform = ImageCms.buildTransform(
+                src, dst, "RGB", "CMYK",
+                renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
+            )
+            out = ImageCms.applyTransform(im, transform)
+            return out, dst.tobytes(), [
+                f"TIFF written in CMYK via ICC profile '{Path(profile).name}' "
+                "(relative colorimetric, embedded)."
+            ]
+        except Exception as exc:  # malformed profile / cms failure — fall back honestly
+            return im.convert("CMYK"), None, [
+                f"CMYK ICC transform failed ({type(exc).__name__}); used a naive conversion. "
+                f"Check the profile at {profile}."
+            ]
+    msg = (
+        "TIFF written in CMYK via a naive conversion (no ICC profile). Set $SCIDRAW_CMYK_ICC to "
+        "the journal's CMYK ICC profile for a colour-managed proof."
+    )
+    if profile:  # a path was given but doesn't exist
+        msg = f"CMYK ICC profile not found at {profile}; used a naive conversion. " + msg
+    return im.convert("CMYK"), None, [msg]

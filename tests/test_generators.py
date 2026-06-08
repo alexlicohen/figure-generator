@@ -101,6 +101,35 @@ def test_pipeline_graphviz_frame_removed():
     assert "Lesion mask" in " ".join(_texts(cleaned))
 
 
+def test_shade_ramp_single_hue_light_to_dark():
+    from scidraw_agent.palette import hue_deg, parse_color, shade_ramp
+
+    ramp = shade_ramp("#2F5C8A", 5)
+    assert len(ramp) == 5
+    lums = [
+        0.299 * (rgb := parse_color(c))[0] + 0.587 * rgb[1] + 0.114 * rgb[2] for c in ramp
+    ]
+    assert lums == sorted(lums, reverse=True)  # light -> dark
+    hues = [hue_deg(parse_color(c)) for c in ramp]
+    assert max(hues) - min(hues) < 12  # one hue, not a rainbow
+
+
+def test_sequential_pipeline_uses_one_hue_not_rainbow():
+    # ungrouped analysis pipeline -> single-hue ramp (steps don't pull distinct categorical hues)
+    schema = FigureSchema(
+        figure_type=FigureType.ANALYSIS_PIPELINE,
+        entities=[Entity(id=f"s{i}", label=f"Step {i}", kind=EntityKind.STEP) for i in range(4)],
+        edges=[
+            Edge(source=f"s{i}", target=f"s{i + 1}", relation=EdgeRelation.FLOWS_TO)
+            for i in range(3)
+        ],
+    )
+    reg = PaletteRegistry()
+    route(schema.figure_type).generate(schema, StyleSpec(), reg, fetcher=None)
+    # the shared palette is NOT polluted with one entry per step id (the ramp bypasses assign)
+    assert not any(k.startswith("s") for k in reg.mapping)
+
+
 def test_anatomical_placeholder_path_offline():
     schema = FigureSchema(
         figure_type=FigureType.ANATOMICAL,

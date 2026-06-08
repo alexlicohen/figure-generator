@@ -195,9 +195,19 @@ def compose_panels(
     panels: list[str] = []
     all_assets, all_warnings = [], []
     report_total = None
+    # When a shared legend is drawn, suppress each circuit panel's own relation legend and
+    # collect the relation types so one combined legend explains them for the whole figure.
+    from dataclasses import replace as _replace
+
+    from .generators.circuit import build_relation_legend, relations_in
+
+    panel_style = _replace(style, embed_relation_legend=False) if shared_legend else style
+    relations: set = set()
     for schema in schemas:
-        result = route(schema.figure_type).generate(schema, style, palette, fetcher=fetcher)
-        cleaned, report = enforce(result.svg, style, data_kind=schema.data_kind)
+        if shared_legend and schema.figure_type == FigureType.MECHANISTIC_CIRCUIT:
+            relations |= relations_in(schema)
+        result = route(schema.figure_type).generate(schema, panel_style, palette, fetcher=fetcher)
+        cleaned, report = enforce(result.svg, panel_style, data_kind=schema.data_kind)
         panels.append(cleaned)
         all_assets.extend(result.assets)
         all_warnings.extend(result.warnings)
@@ -254,11 +264,15 @@ def compose_panels(
 
     total_w, total_h = grid_w, grid_bottom + 6
     if shared_legend:
-        legend, lh = _shared_legend_group(palette, left, grid_bottom + gap * 0.5, grid_w, style)
-        if legend is not None:
-            root.append(legend)
-            total_w = max(total_w, grid_w)
-            total_h = grid_bottom + gap * 0.5 + lh + 6
+        legend_y = grid_bottom + gap * 0.5
+        group_legend, gh = _shared_legend_group(palette, left, legend_y, grid_w, style)
+        if group_legend is not None:
+            root.append(group_legend)
+        rel_legend, rh = build_relation_legend(relations, left, legend_y + gh, style)
+        if rel_legend is not None:
+            root.append(rel_legend)
+        if gh or rh:
+            total_h = legend_y + gh + rh + 6
     root.set("width", f"{total_w:g}")
     root.set("height", f"{total_h:g}")
     root.set("viewBox", f"0 0 {total_w:g} {total_h:g}")

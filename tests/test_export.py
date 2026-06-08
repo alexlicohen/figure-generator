@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+import pytest
 from lxml import etree
 
 from scidraw_agent.compose import compose_scatter
@@ -11,6 +13,12 @@ from scidraw_agent.config import Config
 from scidraw_agent.export import export_artifacts, resize_svg_to_mm
 from scidraw_agent.models import ScatterRequest
 from scidraw_agent.theme import StyleSpec
+
+_SYS_CMYK = Path("/System/Library/ColorSync/Profiles/Generic CMYK Profile.icc")
+
+
+def _cairo_missing(warnings) -> bool:
+    return any("cairosvg" in w or "Pillow" in w for w in warnings)
 
 SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">'
@@ -60,6 +68,36 @@ def test_cmyk_tiff_for_cmyk_journal(tmp_path):
 
     tiff = next(p for p in paths if p.endswith(".tiff"))
     assert Image.open(tiff).mode == "CMYK"
+
+
+@pytest.mark.skipif(not _SYS_CMYK.exists(), reason="no system CMYK ICC profile available")
+def test_cmyk_icc_managed_conversion_embeds_profile(tmp_path):
+    style = StyleSpec(journal="science")
+    paths, warnings = export_artifacts(
+        SVG, tmp_path, style, formats=["tiff"], cmyk_profile=str(_SYS_CMYK)
+    )
+    if _cairo_missing(warnings):
+        return
+    assert any("ICC profile" in w for w in warnings)  # colour-managed, not naive
+    from PIL import Image
+
+    tiff = next(p for p in paths if p.endswith(".tiff"))
+    img = Image.open(tiff)
+    assert img.mode == "CMYK"
+    assert img.info.get("icc_profile")  # the CMYK profile is embedded
+
+
+def test_cmyk_missing_profile_falls_back_to_naive(tmp_path):
+    style = StyleSpec(journal="science")
+    paths, warnings = export_artifacts(
+        SVG, tmp_path, style, formats=["tiff"], cmyk_profile="/no/such/profile.icc"
+    )
+    if _cairo_missing(warnings):
+        return
+    assert any("not found" in w for w in warnings)
+    from PIL import Image
+
+    assert Image.open(next(p for p in paths if p.endswith(".tiff"))).mode == "CMYK"
 
 
 def test_no_formats_writes_nothing(tmp_path):
