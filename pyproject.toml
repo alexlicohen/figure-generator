@@ -26,6 +26,11 @@ dependencies = [
 [project.optional-dependencies]
 plots = [
     "matplotlib>=3.8",
+    "scipy>=1.11",
+]
+# Pillow powers TIFF / CMYK raster export (cairosvg writes RGB PNG/PDF/EPS only).
+export = [
+    "pillow>=10.0",
 ]
 dev = [
     "pytest>=8.0",
@@ -33,6 +38,8 @@ dev = [
     "responses>=0.25",
     "ruff>=0.6",
     "matplotlib>=3.8",
+    "scipy>=1.11",
+    "pillow>=10.0",
 ]
 
 [project.scripts]

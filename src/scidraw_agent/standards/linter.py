@@ -23,6 +23,13 @@ class RuleId(StrEnum):
     NO_SHADOWS = "no_shadows"
     NO_FRAME = "no_frame"
     GRIDLINE_DEMOTE = "gridline_demote"
+    NO_3D = "no_3d"
+    NO_HATCH = "no_hatch"
+    TICK_DENSITY = "tick_density"
+    BUBBLE_AREA = "bubble_area"
+    TEXT_CONTRAST = "text_contrast"
+    ABBREVIATION_LEGEND = "abbreviation_legend"
+    GROUP_SHAPE = "group_shape"
     # Decoding hierarchy
     NO_PIE = "no_pie"
     # Distribution rigor (data_plot)
@@ -30,6 +37,7 @@ class RuleId(StrEnum):
     DISTRIBUTION_GEOM = "distribution_geom"
     OVERPLOT_ALPHA = "overplot_alpha"
     SUPERPLOT = "superplot"
+    STAT_REPORTING = "stat_reporting"
     # Typography / layout
     MIN_FONT = "min_font"
     MIN_STROKE = "min_stroke"
@@ -89,6 +97,48 @@ RULES: dict[RuleId, Rule] = {
         "Gridlines demoted to light grey behind data.",
         "https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.grid.html",
     ),
+    RuleId.NO_3D: Rule(
+        RuleId.NO_3D,
+        StandardsTier.BLOCK,
+        "3D/perspective effect on 2D data — flatten it (3D distorts length/area judgements).",
+        "https://www.data-to-viz.com/caveat/3d.html",
+    ),
+    RuleId.NO_HATCH: Rule(
+        RuleId.NO_HATCH,
+        StandardsTier.DEFAULT,
+        "Hatch/pattern fill replaced with a solid colour (hatching causes moiré, hurts print).",
+        "https://www.data-to-viz.com/caveat.html",
+    ),
+    RuleId.TICK_DENSITY: Rule(
+        RuleId.TICK_DENSITY,
+        StandardsTier.WARN,
+        "Axis has many ticks — thin to ~5–7 labelled ticks to cut clutter.",
+        "https://matplotlib.org/stable/api/ticker_api.html",
+    ),
+    RuleId.BUBBLE_AREA: Rule(
+        RuleId.BUBBLE_AREA,
+        StandardsTier.WARN,
+        "Bubble size must encode by AREA (radius ∝ √value), not radius, or values look inflated.",
+        "https://www.data-to-viz.com/caveat/radius_or_area.html",
+    ),
+    RuleId.TEXT_CONTRAST: Rule(
+        RuleId.TEXT_CONTRAST,
+        StandardsTier.WARN,
+        "Text colour falls below the 4.5:1 WCAG-AA contrast floor against white.",
+        "https://www.w3.org/TR/WCAG21/#contrast-minimum",
+    ),
+    RuleId.ABBREVIATION_LEGEND: Rule(
+        RuleId.ABBREVIATION_LEGEND,
+        StandardsTier.WARN,
+        "Figure uses abbreviations — define them in the caption or a legend key.",
+        "https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/",
+    ),
+    RuleId.GROUP_SHAPE: Rule(
+        RuleId.GROUP_SHAPE,
+        StandardsTier.BLOCK,
+        "Overlapping groups carry a redundant marker shape, not colour alone (colour-blind safe).",
+        "https://www.nature.com/articles/nmeth.1618",
+    ),
     RuleId.NO_PIE: Rule(
         RuleId.NO_PIE,
         StandardsTier.BLOCK,
@@ -119,6 +169,12 @@ RULES: dict[RuleId, Rule] = {
         StandardsTier.DEFAULT,
         "Nested replicates shown as a SuperPlot (points by replicate, replicate means).",
         "https://rupress.org/jcb/article/219/6/e202001064/151717",
+    ),
+    RuleId.STAT_REPORTING: Rule(
+        RuleId.STAT_REPORTING,
+        StandardsTier.DEFAULT,
+        "Significance shown with exact p-value, n, and an effect size — not asterisks alone.",
+        "https://www.nature.com/articles/nphys4031",
     ),
     RuleId.MIN_FONT: Rule(
         RuleId.MIN_FONT,

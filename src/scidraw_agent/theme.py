@@ -68,6 +68,11 @@ class StyleSpec:
     node_style: str = "filled"
     node_ink: str = "#333333"  # outline/text ink for node_style="outline"
 
+    # Circuit generators embed a per-figure relation legend (excitatory/inhibitory/modulatory).
+    # compose_panels turns this off and draws ONE combined relation legend for the whole figure,
+    # so the legend isn't repeated under every panel.
+    embed_relation_legend: bool = True
+
     # Typography (pt; converted to px via PT_TO_PX for SVG checks)
     font_family: str = "Arial, Helvetica, sans-serif"
 

@@ -25,11 +25,13 @@ from pydantic import ValidationError
 from .compose import compose_data_plot as _compose_data_plot
 from .compose import compose_figure as _compose_figure
 from .compose import compose_panels as _compose_panels
+from .compose import compose_plot_panels as _compose_plot_panels
+from .compose import compose_scatter as _compose_scatter
 from .config import load_config
 from .extract import NeuroDeclineError, extract, neuro_decline_trigger
 from .fetch import AssetFetcher
 from .generators.data_plot import DynamitePlotError
-from .models import FigureSchema, PlotRequest
+from .models import FigureSchema, PlotRequest, ScatterRequest
 from .run import figure_from_file, figure_from_text
 from .selfcheck import brain_panels_missing_orientation, invented_entities
 from .standards import StyleGuardBlocked, enforce
@@ -44,6 +46,18 @@ def _report_dict(report) -> dict:
         "applied_fixes": [a.model_dump() for a in report.applied_fixes],
         "warnings": [a.model_dump() for a in report.warnings],
         "overrides": [a.model_dump() for a in report.overrides],
+    }
+
+
+def _export_kwargs(formats: list[str] | None, figure_width: str) -> dict:
+    """Translate a formats list + width into compose_* export keyword arguments."""
+    fmts = {f.lower() for f in (formats or ["png"])}
+    return {
+        "export_png": "png" in fmts,
+        "export_pdf": "pdf" in fmts,
+        "export_eps": "eps" in fmts,
+        "export_tiff": "tiff" in fmts,
+        "figure_width": figure_width,
     }
 
 
@@ -63,25 +77,51 @@ def _manifest_summary(manifest) -> dict:
 # LOCAL tools — no Anthropic API call (usable in subscription mode)
 # ===================================================================== #
 @mcp.tool
-def check_decline(text: str) -> dict:
+def check_decline(
+    text: str,
+    journal: str = "nature",
+    data_kind: str = "signed",
+    orientation: str = "neurological",
+) -> dict:
     """Neuro-decline gate (local, no API). Run BEFORE authoring a schema.
 
     If a request asks for a real neuroimaging render (voxel/stat-map/tractography/surface
-    overlay), returns declined=True with the tools to use instead — do NOT draw a schematic.
+    overlay), returns declined=True — do NOT draw a schematic. Instead of a bare tool list it
+    returns a ``handoff``: ready-to-run nilearn/Surf Ice code with the standards baked in
+    (Crameri colormap by ``data_kind``, sign-preserving colorbar, journal figure size at print
+    DPI, explicit L/R ``orientation``). ``data_kind`` is signed (t/z/%-change) | magnitude |
+    cyclic; ``orientation`` is neurological | radiological.
     """
+    from .models import DataKind
+    from .render_handoff import render_snippet
+    from .theme import StyleSpec as _Style
+
     matched = neuro_decline_trigger(text)
-    if matched:
-        return {
-            "declined": True,
-            "matched": matched,
-            "use_instead": [
-                "nilearn (plot_stat_map / plot_glass_brain)",
-                "FSLeyes",
-                "MRIcroGL",
-                "Surf Ice",
-            ],
-        }
-    return {"declined": False}
+    if not matched:
+        return {"declined": False}
+    try:
+        dk = DataKind(data_kind)
+    except ValueError:
+        dk = DataKind.SIGNED
+    handoff = render_snippet(
+        text, style=_Style(journal=journal), data_kind=dk, orientation=orientation
+    )
+    return {
+        "declined": True,
+        "matched": matched,
+        "use_instead": [
+            "nilearn (plot_stat_map / plot_glass_brain)",
+            "FSLeyes",
+            "MRIcroGL",
+            "Surf Ice",
+        ],
+        "handoff": {
+            "kind": str(handoff.kind),
+            "tool": handoff.tool,
+            "code": handoff.code,
+            "notes": handoff.notes,
+        },
+    }
 
 
 @mcp.tool
@@ -130,12 +170,16 @@ def compose_figure(
     allow_overrides: list[str] | None = None,
     use_assets: bool = True,
     house_style: str = "default",
+    formats: list[str] | None = None,
+    figure_width: str = "none",
 ) -> dict:
     """Render a FigureSchema -> compliant figure.svg + raster + manifest (local, no API).
 
     This is the subscription-mode render entry point: you (Claude Code) supply the schema.
     ``use_assets`` fetches CC-licensed organic assets for anatomical figures.
     ``house_style="cohen"`` applies the Cohen-lab look (outline cards, lab palette, grey assets).
+    ``formats`` ⊆ ["png","pdf","eps","tiff"] (default png; TIFF is CMYK for CMYK journals);
+    ``figure_width`` ∈ none|single|double sizes the figure to the journal column width in mm.
     """
     from .theme import cohen_lab
 
@@ -148,7 +192,10 @@ def compose_figure(
     except ValidationError as e:
         return {"valid": False, "errors": e.errors(include_url=False)}
     try:
-        manifest = _compose_figure(fig, out_dir, config=config, style=style, fetcher=fetcher)
+        manifest = _compose_figure(
+            fig, out_dir, config=config, style=style, fetcher=fetcher,
+            **_export_kwargs(formats, figure_width),
+        )
     except StyleGuardBlocked as e:
         return {"blocked": [a.model_dump() for a in e.actions]}
     return _manifest_summary(manifest)
@@ -160,6 +207,8 @@ def make_data_plot(
     out_dir: str,
     journal: str = "nature",
     allow_overrides: list[str] | None = None,
+    formats: list[str] | None = None,
+    figure_width: str = "none",
 ) -> dict:
     """Render a distribution plot -> compliant figure.svg + raster + manifest (local, no API).
 
@@ -167,6 +216,10 @@ def make_data_plot(
     "xlabel", "ylabel", "title", "force_kind"}. Distribution rigor is enforced (no dynamite
     bars, geom-by-sample-size, SuperPlots for nested replicates). force_kind="bar" is blocked
     unless ``no_dynamite`` is in allow_overrides.
+
+    Set "annotate_stats": true to draw significance brackets between groups (stars on the plot;
+    exact p, n and effect size recorded in the manifest for the legend). "comparisons" picks the
+    pairs ([["A","B"], ...], default adjacent); "paired"/"parametric" choose the test.
     """
     style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
     try:
@@ -174,9 +227,39 @@ def make_data_plot(
     except ValidationError as e:
         return {"valid": False, "errors": e.errors(include_url=False)}
     try:
-        manifest = _compose_data_plot(req, out_dir, config=load_config(), style=style)
+        manifest = _compose_data_plot(
+            req, out_dir, config=load_config(), style=style,
+            **_export_kwargs(formats, figure_width),
+        )
     except DynamitePlotError as e:
         return {"blocked": [{"rule_id": "no_dynamite", "message": str(e)}]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def make_scatter_plot(
+    request: dict,
+    out_dir: str,
+    journal: str = "nature",
+    formats: list[str] | None = None,
+    figure_width: str = "none",
+) -> dict:
+    """Render a scatter/correlation plot -> compliant SVG + raster + manifest (local, no API).
+
+    ``request`` is a ScatterRequest: {"x": [...], "y": [...], optional "groups" (per-point label
+    for colour), "xlabel", "ylabel", "title", "fit" ("linear"|"none"), "annotate_stats"}. With a
+    linear fit, an OLS line + 95% band are drawn and Pearson r/p/n are reported in the manifest's
+    standards (STAT_REPORTING) for paste-ready legends.
+    """
+    style = StyleSpec(journal=journal)
+    try:
+        req = ScatterRequest.model_validate(request)
+    except ValidationError as e:
+        return {"valid": False, "errors": e.errors(include_url=False)}
+    manifest = _compose_scatter(
+        req, out_dir, config=load_config(), style=style,
+        **_export_kwargs(formats, figure_width),
+    )
     return _manifest_summary(manifest)
 
 
@@ -188,6 +271,8 @@ def make_graphical_abstract(
     house_style: str = "cohen",
     column: str = "half",
     use_assets: bool = True,
+    formats: list[str] | None = None,
+    figure_width: str = "none",
 ) -> dict:
     """Render a grant graphical abstract from a GraphicalAbstract spec (local, no API).
 
@@ -207,7 +292,10 @@ def make_graphical_abstract(
         ga = GraphicalAbstract.model_validate(spec)
     except ValidationError as e:
         return {"valid": False, "errors": e.errors(include_url=False)}
-    manifest = _compose_ga(ga, out_dir, config=config, style=style, fetcher=fetcher, column=column)
+    manifest = _compose_ga(
+        ga, out_dir, config=config, style=style, fetcher=fetcher, column=column,
+        **_export_kwargs(formats, figure_width),
+    )
     return _manifest_summary(manifest)
 
 
@@ -218,11 +306,16 @@ def compose_panels_figure(
     journal: str = "nature",
     allow_overrides: list[str] | None = None,
     use_assets: bool = True,
+    ncols: int = 0,
+    shared_legend: bool = True,
+    formats: list[str] | None = None,
+    figure_width: str = "none",
 ) -> dict:
     """Tile multiple FigureSchemas into one multi-panel figure (A/B/C ...) (local, no API).
 
-    A shared palette keeps each group's colour stable across panels. ``use_assets`` fetches
-    CC-licensed organic assets for anatomical panels.
+    Panels lay out in a grid (``ncols``; 0 = auto, ~square). A shared palette keeps each group's
+    colour stable across panels and ``shared_legend`` draws one group→colour legend for the
+    figure. ``use_assets`` fetches CC-licensed organic assets for anatomical panels.
     """
     style = StyleSpec(journal=journal, allow_overrides=allow_overrides or [])
     config = load_config()
@@ -232,9 +325,43 @@ def compose_panels_figure(
     except ValidationError as e:
         return {"valid": False, "errors": e.errors(include_url=False)}
     try:
-        manifest = _compose_panels(figs, out_dir, config=config, style=style, fetcher=fetcher)
+        manifest = _compose_panels(
+            figs, out_dir, config=config, style=style, fetcher=fetcher,
+            ncols=ncols or None, shared_legend=shared_legend,
+            **_export_kwargs(formats, figure_width),
+        )
     except StyleGuardBlocked as e:
         return {"blocked": [a.model_dump() for a in e.actions]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def compose_plot_panels_figure(
+    requests: list[dict],
+    out_dir: str,
+    journal: str = "nature",
+    shared_y: bool = True,
+    formats: list[str] | None = None,
+    figure_width: str = "none",
+) -> dict:
+    """Tile distribution plots as subplots sharing a y-axis + one shared legend (local, no API).
+
+    ``requests`` is a list of PlotRequest dicts. A common y-scale makes the panels directly
+    comparable (box/violin across conditions) and the group→colour legend is drawn once. Same
+    distribution rigor as make_data_plot per panel; force_kind="bar" blocks without override.
+    """
+    style = StyleSpec(journal=journal)
+    try:
+        reqs = [PlotRequest.model_validate(r) for r in requests]
+    except ValidationError as e:
+        return {"valid": False, "errors": e.errors(include_url=False)}
+    try:
+        manifest = _compose_plot_panels(
+            reqs, out_dir, config=load_config(), style=style, shared_y=shared_y,
+            **_export_kwargs(formats, figure_width),
+        )
+    except DynamitePlotError as e:
+        return {"blocked": [{"rule_id": "no_dynamite", "message": str(e)}]}
     return _manifest_summary(manifest)
 
 

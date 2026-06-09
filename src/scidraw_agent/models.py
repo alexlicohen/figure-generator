@@ -121,6 +121,33 @@ class PlotRequest(BaseModel):
     title: str = ""
     # force a plot kind to exercise the dynamite ban; "auto" picks by sample size
     force_kind: str = "auto"
+    # Inferential annotations: draw significance brackets between groups (stars on the plot;
+    # exact p, n and effect size recorded for the legend). ``comparisons`` chooses which pairs
+    # (each ["groupA","groupB"]); default is every adjacent pair. ``paired``/``parametric`` pick
+    # the test (Welch t / paired t / Mann-Whitney U). ``annotate_n`` appends n to tick labels.
+    annotate_stats: bool = False
+    comparisons: list[list[str]] | None = None
+    paired: bool = False
+    parametric: bool = True
+    annotate_n: bool = True
+
+
+class ScatterRequest(BaseModel):
+    """A scatter / correlation request: paired x,y values, optional per-point group labels.
+
+    With ``fit="linear"`` an OLS line and 95% mean-response band are drawn and Pearson r/p/n
+    are reported (exact, for the legend). ``groups`` (parallel to x/y) colours points by group
+    using the stable house palette; the fit/correlation is computed on all points together.
+    """
+
+    x: list[float]
+    y: list[float]
+    groups: list[str] | None = None
+    xlabel: str = "x"
+    ylabel: str = "y"
+    title: str = ""
+    fit: str = "linear"  # "linear" | "none"
+    annotate_stats: bool = True  # show r, p, n (and the fitted slope)
 
 
 # --------------------------------------------------------------------------- #

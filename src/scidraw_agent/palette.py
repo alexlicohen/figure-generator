@@ -163,6 +163,30 @@ def hue_deg(rgb: tuple[int, int, int]) -> float:
     return colorsys.rgb_to_hls(r, g, b)[0] * 360.0
 
 
+def shade_ramp(
+    base: str, n: int, *, light: float = 0.80, dark: float = 0.34
+) -> list[str]:
+    """Return ``n`` single-hue shades of ``base`` from light to dark (a sequential ramp).
+
+    Keeps the base hue, varies lightness across [light, dark] (and lifts saturation slightly
+    for the darker end so deep steps don't read as grey). Used to colour *sequential* pipeline
+    steps by position instead of giving each step a different categorical hue (which reads as a
+    rainbow). ``n<=1`` returns ``[base]``.
+    """
+    rgb = parse_color(base) or (47, 92, 138)
+    h, _l, s = colorsys.rgb_to_hls(*(c / 255 for c in rgb))
+    if n <= 1:
+        return [_hex(rgb)]
+    out = []
+    for i in range(n):
+        t = i / (n - 1)
+        lt = light + (dark - light) * t
+        st = min(1.0, s * (0.85 + 0.3 * t))
+        r, g, b = colorsys.hls_to_rgb(h, lt, st)
+        out.append(_hex((round(r * 255), round(g * 255), round(b * 255))))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Perceptual distance / CVD
 # --------------------------------------------------------------------------- #

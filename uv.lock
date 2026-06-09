@@ -2502,13 +2502,19 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "matplotlib" },
+    { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-mock" },
     { name = "responses" },
     { name = "ruff" },
+    { name = "scipy" },
+]
+export = [
+    { name = "pillow" },
 ]
 plots = [
     { name = "matplotlib" },
+    { name = "scipy" },
 ]
 
 [package.metadata]
@@ -2522,6 +2528,8 @@ requires-dist = [
     { name = "lxml", specifier = ">=5.0" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8" },
     { name = "matplotlib", marker = "extra == 'plots'", specifier = ">=3.8" },
+    { name = "pillow", marker = "extra == 'dev'", specifier = ">=10.0" },
+    { name = "pillow", marker = "extra == 'export'", specifier = ">=10.0" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pymupdf", specifier = ">=1.24" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -2529,12 +2537,14 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31" },
     { name = "responses", marker = "extra == 'dev'", specifier = ">=0.25" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.11" },
+    { name = "scipy", marker = "extra == 'plots'", specifier = ">=1.11" },
     { name = "svgpathtools", specifier = ">=1.7" },
     { name = "svgutils", specifier = "==0.3.4" },
     { name = "typer", specifier = ">=0.12" },
     { name = "zenodo-get", specifier = ">=1.6" },
 ]
-provides-extras = ["plots", "dev"]
+provides-extras = ["plots", "export", "dev"]
 
 [[package]]
 name = "scipy"

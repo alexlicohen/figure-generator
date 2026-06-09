@@ -110,9 +110,15 @@ def enforce(
     _remove_frame(root, elements, style, report)
     _clamp_strokes(elements, style, report)
     _demote_gridlines(elements, style, report)
+    _strip_hatch(root, style, report)
     _snap_colors(elements, style, report)
     _fix_rainbow_gradients(root, style, report, data_kind)
     _check_pie(root, style, report, blocked)
+    _check_3d(root, style, report, blocked)
+    _check_tick_density(root, style, report)
+    _check_bubble_area(root, style, report)
+    _check_text_contrast(root, style, report)
+    _check_abbreviations(root, style, report)
     _check_fonts(root, style, report, blocked)
 
     if blocked:
@@ -459,7 +465,7 @@ def _convert_pie_to_bar(root, cx, cy, recovered, style: StyleSpec) -> None:
             color = fill
         else:
             color = palette.CATEGORICAL_ORDER[i % len(palette.CATEGORICAL_ORDER)]
-        biggest = max(s[0] for s in slices)
+        biggest = max((s[0] for s in slices), default=0.0) or 1.0  # avoid /0 on degenerate pies
         rect = etree.SubElement(grp, f"{nsg}rect")
         rect.set("x", f"{x0:g}")
         rect.set("y", f"{y:g}")
@@ -473,6 +479,189 @@ def _convert_pie_to_bar(root, cx, cy, recovered, style: StyleSpec) -> None:
         label.set("font-family", style.font_family)
         label.set("fill", "#000000")
         label.text = f"{pct:.0f}%"
+
+
+# -- Tier-2 standards (PLAN §5b) --------------------------------------------- #
+_URL_REF = re.compile(r"url\(#([^)]+)\)")
+_ABBREV = re.compile(r"\b[A-Z][A-Z0-9]{1,5}\b")
+_TICK_ID = re.compile(r"^[xy]tick_\d+$")
+# Always-understood / handled-elsewhere tokens that need no caption definition.
+_ABBREV_OK = {"L", "R", "NS", "ID", "OK", "MRI", "DNA", "RNA", "AP", "ML", "DV"}
+# Whole-token 3D markers (faux-3D on 2D data). Never matched as substrings (hex-id safe).
+_3D_VOCAB = {"axes3d", "mplot3d", "bar3d", "pie3d", "surf3d", "surface3d", "scatter3d"}
+
+
+def _check_3d(root, style: StyleSpec, report: StandardsReport, blocked: list) -> None:
+    """Block faux-3D on 2D data (3D axes, or a shear transform that fakes perspective).
+
+    Matches only a fixed 3D vocabulary as whole tokens — never an arbitrary "3d" substring,
+    because matplotlib emits random hex ids (e.g. ``p23d8f``) that would otherwise false-fire.
+    """
+    found = False
+    for el in root.iter():
+        cls = set(re.split(r"[^a-z0-9]+", (el.get("class") or "").lower()))
+        ids = set(re.split(r"[^a-z0-9]+", (el.get("id") or "").lower()))
+        # class tokens aren't hex, so a bare "3d" class is a genuine signal; ids only match the
+        # multi-letter vocab (which can never collide with a hex string).
+        if (cls & (_3D_VOCAB | {"3d"})) or (ids & _3D_VOCAB):
+            found = True
+        transform = (el.get("transform") or "") + _parse_style(el.get("style")).get("transform", "")
+        if "skewx" in transform.lower() or "skewy" in transform.lower():
+            found = True
+    if not found:
+        return
+    if style.is_overridden(RuleId.NO_3D):
+        report.add(
+            _action(RuleId.NO_3D, auto_fixed=False, message="3D/perspective kept (override).")
+        )
+        return
+    blocked.append(
+        _action(
+            RuleId.NO_3D,
+            auto_fixed=False,
+            message="3D/perspective effect on 2D data detected — render it flat (BLOCK).",
+        )
+    )
+
+
+def _strip_hatch(root, style: StyleSpec, report: StandardsReport) -> None:
+    """Replace hatch/pattern fills with a representative solid colour, drop the pattern defs."""
+    patterns: dict[str, str] = {}
+    for el in root.iter():
+        if _local(el) != "pattern" or not el.get("id"):
+            continue
+        color = None
+        for child in el.iter():
+            c = (
+                child.get("stroke")
+                or child.get("fill")
+                or _parse_style(child.get("style")).get("stroke")
+                or _parse_style(child.get("style")).get("fill")
+            )
+            if c and c.strip().lower() not in _WHITE:
+                color = c.strip()
+                break
+        patterns[el.get("id")] = color or palette.CATEGORICAL_ORDER[0]
+    if not patterns:
+        return
+    fixed = 0
+    for el in root.iter():
+        for attr in ("fill", "stroke"):
+            m = _URL_REF.match((el.get(attr) or "").strip())
+            if m and m.group(1) in patterns:
+                el.set(attr, patterns[m.group(1)])
+                fixed += 1
+        props = _parse_style(el.get("style"))
+        changed = False
+        for k in ("fill", "stroke"):
+            m = _URL_REF.match((props.get(k) or "").strip())
+            if m and m.group(1) in patterns:
+                props[k] = patterns[m.group(1)]
+                changed = True
+                fixed += 1
+        if changed:
+            el.set("style", _serialize_style(props))
+    for el in list(root.iter()):
+        if _local(el) == "pattern" and el.get("id") in patterns:
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
+    if fixed:
+        report.add(
+            _action(
+                RuleId.NO_HATCH,
+                auto_fixed=True,
+                message=f"Replaced {fixed} hatch/pattern fill(s) with a solid colour.",
+            )
+        )
+
+
+def _check_tick_density(root, style: StyleSpec, report: StandardsReport) -> None:
+    """Warn when an axis carries many ticks (matplotlib emits id='xtick_N' / 'ytick_N')."""
+    counts = {"x": 0, "y": 0}
+    for el in root.iter():
+        m = _TICK_ID.match(el.get("id") or "")
+        if m:
+            counts[(el.get("id") or "")[0]] += 1
+    busy = {ax: c for ax, c in counts.items() if c > 12}
+    if busy:
+        detail = ", ".join(f"{ax}-axis {c} ticks" for ax, c in busy.items())
+        report.add(
+            _action(
+                RuleId.TICK_DENSITY,
+                auto_fixed=False,
+                message=f"Dense axis ticks ({detail}) — thin to ~5–7 labelled ticks.",
+            )
+        )
+
+
+def _check_bubble_area(root, style: StyleSpec, report: StandardsReport) -> None:
+    """Warn on a bubble chart (>=5 distinct circle radii) to confirm area-proportional sizing."""
+    radii = {
+        round(r, 2)
+        for el in root.iter()
+        if _local(el) == "circle" and (r := _num(el.get("r")))
+    }
+    if len(radii) >= 5:
+        report.add(
+            _action(
+                RuleId.BUBBLE_AREA,
+                auto_fixed=False,
+                message=f"{len(radii)} distinct bubble radii — size must encode by AREA "
+                "(radius ∝ √value), not radius.",
+            )
+        )
+
+
+def _relative_luminance(rgb: tuple[int, int, int]) -> float:
+    def chan(c: float) -> float:
+        c /= 255.0
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = rgb
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+
+
+def _check_text_contrast(root, style: StyleSpec, report: StandardsReport) -> None:
+    """Warn on text whose colour is below the 4.5:1 WCAG-AA floor against the white background."""
+    bad: set[str] = set()
+    for el in root.iter():
+        if _local(el) != "text":
+            continue
+        fill = el.get("fill") or _parse_style(el.get("style")).get("fill")
+        if not fill or fill.strip().lower() in _WHITE:
+            continue
+        rgb = palette.parse_color(fill)
+        if not rgb:
+            continue
+        contrast = 1.05 / (_relative_luminance(rgb) + 0.05)
+        if contrast < 4.5:
+            bad.add(fill.strip())
+    if bad:
+        report.add(
+            _action(
+                RuleId.TEXT_CONTRAST,
+                auto_fixed=False,
+                message=f"Low-contrast text vs white (<4.5:1 WCAG AA): {', '.join(sorted(bad))}.",
+            )
+        )
+
+
+def _check_abbreviations(root, style: StyleSpec, report: StandardsReport) -> None:
+    """Warn (advisory) when >=3 distinct abbreviations appear, to prompt a caption legend."""
+    toks: set[str] = set()
+    for el in root.iter():
+        if _local(el) != "text" or not el.text:
+            continue
+        toks |= {t for t in _ABBREV.findall(el.text) if t not in _ABBREV_OK}
+    if len(toks) >= 3:
+        report.add(
+            _action(
+                RuleId.ABBREVIATION_LEGEND,
+                auto_fixed=False,
+                message=f"Define these abbreviations in the caption: {', '.join(sorted(toks))}.",
+            )
+        )
 
 
 def _check_fonts(root, style: StyleSpec, report: StandardsReport, blocked: list) -> None:

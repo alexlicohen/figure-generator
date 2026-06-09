@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import graphviz
 
 from ..models import FigureSchema, FigureType
-from ..palette import PaletteRegistry, parse_color
+from ..palette import PaletteRegistry, parse_color, shade_ramp
 from ..theme import StyleSpec
 from . import GeneratorResult
 
@@ -54,8 +54,20 @@ class PipelineGenerator:
             "edge", color=ink, arrowsize="0.8", penwidth="1.2", fontname="Arial", fontsize="11"
         )
 
-        for e in schema.entities:
-            accent = palette.assign(e.group or e.id).color
+        # A *sequential* pipeline with no groups reads as a rainbow if each step gets the next
+        # categorical hue. Shade one hue by position instead (light->dark = progression). Keep
+        # the categorical/group mapping for study designs (cohorts/arms) and any grouped figure.
+        sequential = schema.figure_type == FigureType.ANALYSIS_PIPELINE and all(
+            e.group is None for e in schema.entities
+        )
+        ramp = (
+            shade_ramp(style.categorical[0], len(schema.entities))
+            if sequential and style.categorical
+            else None
+        )
+
+        for i, e in enumerate(schema.entities):
+            accent = ramp[i] if ramp else palette.assign(e.group or e.id).color
             if outline:
                 # white card, coloured outline, ink text — the lab's white-box look, elevated
                 g.node(e.id, e.label, fillcolor="white", color=accent, fontcolor=ink)

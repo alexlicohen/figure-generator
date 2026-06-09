@@ -20,6 +20,7 @@ from .models import (
     GraphicalAbstract,
     Manifest,
     PlotRequest,
+    ScatterRequest,
     StandardsReport,
 )
 from .palette import PaletteRegistry
@@ -46,25 +47,41 @@ def _viewport(svg: str) -> tuple[float, float]:
     return num(root.get("width")), num(root.get("height"))
 
 
-def _ensure_cairo_discoverable() -> None:
-    """On macOS, point cffi's dlopen at Homebrew's libcairo if it isn't already findable.
+def _shared_legend_group(palette, x0: float, y0: float, max_w: float, style):
+    """Build one figure-level group→colour legend (swatch + label), wrapping to ``max_w``.
 
-    cairocffi (under cairosvg) dlopen()s ``libcairo.2.dylib`` by leaf name, and the dynamic
-    loader does not search Homebrew's lib dir (``/opt/homebrew/lib`` on Apple Silicon,
-    ``/usr/local/lib`` on Intel) by default — so an installed cairo is invisible. Setting
-    ``DYLD_FALLBACK_LIBRARY_PATH`` before the import is honoured by dlopen. No-op when already
-    set, on non-macOS, or when no Homebrew cairo is present.
+    Returns (lxml <g> element, height) — or (None, 0) when fewer than two groups appeared, so
+    a single-group figure isn't given a redundant legend.
     """
-    import os
-    import sys
-
-    if sys.platform != "darwin" or "DYLD_FALLBACK_LIBRARY_PATH" in os.environ:
-        return
-    for base in ("/opt/homebrew", "/usr/local"):
-        libdir = f"{base}/lib"
-        if Path(libdir, "libcairo.2.dylib").exists():
-            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = libdir
-            return
+    groups = list(palette.mapping.items())
+    if len(groups) < 2:
+        return None, 0.0
+    ns = "{http://www.w3.org/2000/svg}"
+    g = etree.Element(f"{ns}g")
+    g.set("class", "panel-legend")
+    sw, pad, gap_x = 14.0, 6.0, 24.0
+    fs = style.default_font_px
+    x, y, row_h = x0, y0, fs + 10
+    for name, gstyle in groups:
+        label_w = sw + pad + 0.62 * fs * len(name) + gap_x
+        if x > x0 and x + label_w > x0 + max_w:
+            x, y = x0, y + row_h
+        rect = etree.SubElement(g, f"{ns}rect")
+        rect.set("x", f"{x:g}")
+        rect.set("y", f"{y:g}")
+        rect.set("width", f"{sw:g}")
+        rect.set("height", f"{sw:g}")
+        rect.set("rx", "2")
+        rect.set("fill", gstyle.color)
+        text = etree.SubElement(g, f"{ns}text")
+        text.set("x", f"{x + sw + pad:g}")
+        text.set("y", f"{y + sw * 0.82:g}")
+        text.set("font-size", f"{fs:g}")
+        text.set("font-family", style.font_family)
+        text.set("fill", style.node_ink)
+        text.text = name
+        x += label_w
+    return g, (y - y0) + row_h
 
 
 def _write_credits(out_dir: Path, assets: list) -> Credits:
@@ -77,35 +94,24 @@ def _write_credits(out_dir: Path, assets: list) -> Credits:
 
 
 def _export_raster(
-    svg: str, out_dir: Path, dpi: int, *, png: bool, pdf: bool
+    svg: str,
+    out_dir: Path,
+    style: StyleSpec,
+    *,
+    png: bool = True,
+    pdf: bool = False,
+    eps: bool = False,
+    tiff: bool = False,
+    figure_width: str = "none",
 ) -> tuple[list[str], list[str]]:
-    """Best-effort raster export. SVG is the primary deliverable (see the brief); PNG/PDF
-    are secondary, so a missing/unloadable cairo never fails a run — it is recorded as a
-    warning and the SVG still ships. Returns (raster_paths, warnings).
+    """Best-effort multi-format export (see :mod:`export`). SVG is the primary deliverable, so
+    a missing/unloadable cairo never fails a run — it is recorded as a warning and the SVG
+    still ships. ``figure_width`` ∈ {none, single, double} sizes to journal column width.
     """
-    paths: list[str] = []
-    if not (png or pdf):
-        return paths, []
-    _ensure_cairo_discoverable()
-    try:
-        import cairosvg  # lazy: importing compose must not hard-require libcairo
-    except Exception as exc:  # ImportError, or OSError when libcairo can't be dlopen'd
-        return paths, [
-            f"raster export skipped: cairosvg/libcairo unavailable ({type(exc).__name__}). "
-            "SVG written; install cairo (e.g. `brew install cairo`) for PNG/PDF export."
-        ]
-    data = svg.encode()
-    if png:
-        p = out_dir / "figure.png"
-        # white background: style_guard strips the generators' frame/bg, so without this the
-        # PNG is transparent (reads as black on dark viewers). Journals want white.
-        cairosvg.svg2png(bytestring=data, write_to=str(p), dpi=dpi, background_color="white")
-        paths.append(str(p))
-    if pdf:
-        p = out_dir / "figure.pdf"
-        cairosvg.svg2pdf(bytestring=data, write_to=str(p))
-        paths.append(str(p))
-    return paths, []
+    from .export import export_artifacts
+
+    formats = [n for flag, n in ((png, "png"), (pdf, "pdf"), (eps, "eps"), (tiff, "tiff")) if flag]
+    return export_artifacts(svg, out_dir, style, formats=formats, figure_width=figure_width)
 
 
 def compose_figure(
@@ -119,6 +125,9 @@ def compose_figure(
     extra_warnings: list[str] | None = None,
     export_png: bool = True,
     export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Generate, enforce standards, export, and write figure.svg + figure.manifest.json."""
     config = config or load_config()
@@ -133,7 +142,8 @@ def compose_figure(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
-        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=export_pdf
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(
@@ -159,15 +169,25 @@ def compose_panels(
     style: StyleSpec | None = None,
     fetcher=None,
     palette: PaletteRegistry | None = None,
+    ncols: int | None = None,
+    shared_legend: bool = True,
     export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Tile multiple figures into one multi-panel SVG with A/B/C letters.
 
-    One shared PaletteRegistry is used across panels, so a group keeps the same colour in
-    every panel (stable group->colour mapping).
+    Panels are laid out in a grid (``ncols``; defaults to roughly square), not a single row.
+    One shared PaletteRegistry is used across panels, so a group keeps the same colour in every
+    panel; when ``shared_legend`` and >=2 groups appear, one group->colour legend is drawn for
+    the whole figure (instead of repeating per panel).
     """
     from svgutils import transform as st
 
+    if not schemas:
+        raise ValueError("compose_panels requires at least one schema.")
     config = config or load_config()
     style = style or StyleSpec(journal=config.journal)
     palette = palette or PaletteRegistry(colors=list(style.categorical))  # shared across panels
@@ -177,9 +197,19 @@ def compose_panels(
     panels: list[str] = []
     all_assets, all_warnings = [], []
     report_total = None
+    # When a shared legend is drawn, suppress each circuit panel's own relation legend and
+    # collect the relation types so one combined legend explains them for the whole figure.
+    from dataclasses import replace as _replace
+
+    from .generators.circuit import build_relation_legend, relations_in
+
+    panel_style = _replace(style, embed_relation_legend=False) if shared_legend else style
+    relations: set = set()
     for schema in schemas:
-        result = route(schema.figure_type).generate(schema, style, palette, fetcher=fetcher)
-        cleaned, report = enforce(result.svg, style, data_kind=schema.data_kind)
+        if shared_legend and schema.figure_type == FigureType.MECHANISTIC_CIRCUIT:
+            relations |= relations_in(schema)
+        result = route(schema.figure_type).generate(schema, panel_style, palette, fetcher=fetcher)
+        cleaned, report = enforce(result.svg, panel_style, data_kind=schema.data_kind)
         panels.append(cleaned)
         all_assets.extend(result.assets)
         all_warnings.extend(result.warnings)
@@ -190,37 +220,61 @@ def compose_panels(
             report_total.warnings.extend(report.warnings)
             report_total.overrides.extend(report.overrides)
 
-    letter_gap, panel_gap, top = 22.0, 36.0, 6.0
-    x_cursor = 0.0
-    max_h = 0.0
+    import math
+
+    letter_gap, gap, top, left = 22.0, 36.0, 6.0, 6.0
+    n = len(panels)
+    cols = ncols or max(1, min(n, math.ceil(math.sqrt(n))))
+    rows = math.ceil(n / cols)
+    dims = [_viewport(s) for s in panels]
+    col_w = [0.0] * cols
+    row_h = [0.0] * rows
+    for i, (w, h) in enumerate(dims):
+        r, c = divmod(i, cols)
+        col_w[c] = max(col_w[c], w)
+        row_h[r] = max(row_h[r], h)
+    col_x, acc = [], left
+    for c in range(cols):
+        col_x.append(acc)
+        acc += col_w[c] + gap
+    row_top, acc = [], top
+    for r in range(rows):
+        acc += letter_gap
+        row_top.append(acc)
+        acc += row_h[r] + gap
+
     elements = []
     for i, svg in enumerate(panels):
-        w, h = _viewport(svg)
-        fig = st.fromstring(svg)
-        root = fig.getroot()
-        root.moveto(x_cursor, top + letter_gap)
+        r, c = divmod(i, cols)
+        root = st.fromstring(svg).getroot()
+        root.moveto(col_x[c], row_top[r])
         elements.append(root)
         elements.append(
             st.TextElement(
-                x_cursor + 2,
-                top + letter_gap - 6,
-                chr(ord("A") + i),
-                size=16,
-                weight="bold",
-                font="Arial",
+                col_x[c] + 2, row_top[r] - 6, chr(ord("A") + i),
+                size=16, weight="bold", font="Arial",
             )
         )
-        x_cursor += w + panel_gap
-        max_h = max(max_h, h)
 
-    total_w = max(1.0, x_cursor - panel_gap)
-    total_h = top + letter_gap + max_h + 6
-    base = st.SVGFigure(f"{total_w}px", f"{total_h}px")
+    grid_w = max(1.0, (col_x[-1] + col_w[-1]))
+    last_r = (n - 1) // cols
+    grid_bottom = row_top[last_r] + row_h[last_r]
+
+    base = st.SVGFigure(f"{grid_w}px", f"{grid_bottom + 6}px")
     base.append(elements)
-    combined = base.to_str().decode()
+    root = etree.fromstring(base.to_str())
 
-    # ensure width/height/viewBox for raster + final guard, then enforce once more
-    root = etree.fromstring(combined.encode())
+    total_w, total_h = grid_w, grid_bottom + 6
+    if shared_legend:
+        legend_y = grid_bottom + gap * 0.5
+        group_legend, gh = _shared_legend_group(palette, left, legend_y, grid_w, style)
+        if group_legend is not None:
+            root.append(group_legend)
+        rel_legend, rh = build_relation_legend(relations, left, legend_y + gh, style)
+        if rel_legend is not None:
+            root.append(rel_legend)
+        if gh or rh:
+            total_h = legend_y + gh + rh + 6
     root.set("width", f"{total_w:g}")
     root.set("height", f"{total_h:g}")
     root.set("viewBox", f"0 0 {total_w:g} {total_h:g}")
@@ -231,7 +285,8 @@ def compose_panels(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(combined)
     rasters, raster_warnings = _export_raster(
-        combined, out_dir, style.preset.raster_dpi, png=export_png, pdf=False
+        combined, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(
@@ -256,6 +311,10 @@ def compose_data_plot(
     style: StyleSpec | None = None,
     palette: PaletteRegistry | None = None,
     export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Render a distribution plot (M8 data_plot) -> compliant SVG + raster + manifest.
 
@@ -278,7 +337,112 @@ def compose_data_plot(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
-        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=False
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
+    )
+
+    manifest = Manifest(
+        figure_type=FigureType.DATA_PLOT,
+        caption_seed=request.title,
+        svg_path=str(svg_path),
+        raster_paths=rasters,
+        journal=style.journal,
+        standards=report,
+        warnings=raster_warnings,
+    )
+    (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
+    return manifest
+
+
+def compose_plot_panels(
+    requests: list[PlotRequest],
+    out_dir: str | Path,
+    *,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    palette: PaletteRegistry | None = None,
+    shared_y: bool = True,
+    export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
+) -> Manifest:
+    """Tile distribution plots as subplots sharing a y-axis + one shared legend (local, no API).
+
+    A shared y-scale makes the panels directly comparable; the group→colour legend is drawn
+    once; a shared PaletteRegistry keeps group colours stable. Raises DynamitePlotError if any
+    panel forces a bar+SEM plot without the override.
+    """
+    from .generators.data_plot import build_distribution_panels_svg
+
+    if not requests:
+        raise ValueError("compose_plot_panels requires at least one PlotRequest.")
+    config = config or load_config()
+    style = style or StyleSpec(journal=config.journal)
+    palette = palette or PaletteRegistry(colors=list(style.categorical))
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    svg, actions = build_distribution_panels_svg(requests, style, palette, shared_y=shared_y)
+    report = StandardsReport()
+    for a in actions:
+        report.add(a)
+    cleaned, report = enforce(svg, style, report=report)
+
+    svg_path = out_dir / "figure.svg"
+    svg_path.write_text(cleaned)
+    rasters, raster_warnings = _export_raster(
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
+    )
+
+    manifest = Manifest(
+        figure_type=FigureType.DATA_PLOT,
+        caption_seed=requests[0].title if requests else "",
+        svg_path=str(svg_path),
+        raster_paths=rasters,
+        journal=style.journal,
+        standards=report,
+        warnings=raster_warnings,
+    )
+    (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
+    return manifest
+
+
+def compose_scatter(
+    request: ScatterRequest,
+    out_dir: str | Path,
+    *,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    palette: PaletteRegistry | None = None,
+    export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
+) -> Manifest:
+    """Render a scatter/correlation plot (OLS fit + 95% band + r/p/n) -> SVG + raster + manifest."""
+    from .generators.data_plot import build_scatter_svg
+
+    config = config or load_config()
+    style = style or StyleSpec(journal=config.journal)
+    palette = palette or PaletteRegistry(colors=list(style.categorical))
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    svg, actions = build_scatter_svg(request, style, palette)
+    report = StandardsReport()
+    for a in actions:
+        report.add(a)
+    cleaned, report = enforce(svg, style, report=report)
+
+    svg_path = out_dir / "figure.svg"
+    svg_path.write_text(cleaned)
+    rasters, raster_warnings = _export_raster(
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(
@@ -304,6 +468,9 @@ def compose_graphical_abstract(
     column: str | None = None,
     export_png: bool = True,
     export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
 ) -> Manifest:
     """Render a structural graphical abstract -> compliant SVG + raster + manifest + credits.
 
@@ -326,7 +493,8 @@ def compose_graphical_abstract(
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
-        cleaned, out_dir, style.preset.raster_dpi, png=export_png, pdf=export_pdf
+        cleaned, out_dir, style, png=export_png, pdf=export_pdf,
+        eps=export_eps, tiff=export_tiff, figure_width=figure_width,
     )
 
     manifest = Manifest(

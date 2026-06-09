@@ -194,7 +194,52 @@ structured outputs, neuro-decline gate first) → `selfcheck` → `route` → ge
 - Output quality spot-checked by rendering anatomical/circuit/pipeline/data_plot with real
   assets and visually inspecting the PNGs (pipeline + data_plot were already publication-grade).
 
+**Done since (best-in-class build, 165 tests):**
+- **`data_plot` expanded with scatter + stats** (`generators/data_plot.py`, `stats.py`).
+  `build_scatter_svg` / `ScatterRequest` / `compose_scatter` draw a scatter with an OLS line +
+  95% mean-response band and Pearson r/p/n; groups colour **and marker shape** (CVD-safe,
+  records `group_shape`). `PlotRequest.annotate_stats` draws stacked significance brackets
+  (stars on the plot; exact p, n, effect size in the manifest via `stat_reporting`) — Welch /
+  paired t / Mann-Whitney via `parametric`/`paired`; n appended to tick labels. CLI `scidraw
+  scatter`, MCP `make_scatter_plot`; scipy added to the `plots` extra.
+- **Neuro-decline is now a head start** (`render_handoff.py`). `check_decline` (MCP) and CLI
+  `render-snippet` / the `prompt`·`ingest` decline path emit a ready-to-run nilearn / Surf Ice
+  snippet with the standards baked in: Crameri colormap by `data_kind`, sign-preserving
+  colorbar, journal figure size at print DPI, explicit L/R orientation. Kind routed from the
+  request (glass-brain / stat-map / surface / connectome / tractography).
+- **Export completeness** (`export.py`, replaces `compose._export_raster`/`_ensure_cairo…`).
+  SVG + PNG + PDF + **EPS** + **TIFF**; `figure_width` (single/double) sizes to the journal
+  column in mm (vector physical size + raster px = DPI×size); TIFF is **CMYK** for CMYK
+  journals (naive conversion, honestly flagged). Wired through every `compose_*`, CLI
+  `--format/--width`, and the MCP compose tools (`formats`/`figure_width`). Pillow → `export`
+  extra.
+- **Tier-2 standards rules** (PLAN §5b; catalog now 24). style_guard adds **no_3d** [BLOCK,
+  fixed 3D vocabulary — hex-id safe], **no_hatch** [DEFAULT, pattern→solid], **tick_density**
+  [WARN], **bubble_area** [WARN], **text_contrast** [WARN, <4.5:1 vs white], **abbreviation_
+  legend** [WARN, ≥3 abbreviations]; **group_shape** [BLOCK] guaranteed in the scatter
+  generator. WARN rules verified silent on clean Cohen-styled output.
+- **Multi-panel grid + shared legend/axes (169 tests).** `compose_panels` now lays panels in a
+  **grid** (`ncols`, default ~square; was horizontal-only) and draws one **shared group→colour
+  legend** (`_shared_legend_group`, ≥2 groups). New `compose_plot_panels` /
+  `build_distribution_panels_svg` tile distribution plots as subplots **sharing a y-axis** with
+  one legend (box/violin across ROIs/conditions, directly comparable) — `_draw_distribution`
+  extracted so a panel and a standalone plot enforce identical rigor; per-panel actions deduped.
+  CLI `scidraw plot-panels` + `panels --ncols/--shared-legend`; MCP `compose_plot_panels_figure`
+  + `compose_panels_figure(ncols, shared_legend)`.
+
+**Done since (polish pass, 173 tests):**
+- **Combined relation legend in panels.** `circuit.build_relation_legend` factored out;
+  `StyleSpec.embed_relation_legend` (default True) lets `compose_panels` suppress per-panel
+  relation legends and draw ONE combined relation legend beneath the grid (next to the shared
+  group legend). Standalone circuits keep their own.
+- **ICC-managed CMYK** (`export._to_cmyk`). With `$SCIDRAW_CMYK_ICC` / `cmyk_profile` →
+  ImageCms sRGB→CMYK (relative colorimetric) with the profile embedded in the TIFF; missing/
+  bad profile or none → naive convert with an honest, differentiated warning.
+- **Single-hue sequential pipelines** (`palette.shade_ramp`). Ungrouped `analysis_pipeline`
+  steps shade one hue light→dark by position (bypassing `palette.assign`, so the shared palette
+  isn't polluted with step ids); grouped / study-design keep the categorical mapping.
+
 **Known follow-ups (not yet built):** BIOART neuro depth is shallow (no synapse / microglia /
 spinal-cord / EEG); Wikimedia is broad but quality varies; PhyloPic matches taxonomic names
-best (common names like "mouse" may miss). Sequential pipelines get one Okabe-Ito colour per
-step (slightly rainbow) — could shade by a single hue. All handled by graceful degradation.
+best (common names like "mouse" may miss). EPS stays RGB vector (cairo has no CMYK vector path).
+All handled by graceful degradation.

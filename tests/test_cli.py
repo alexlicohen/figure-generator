@@ -113,3 +113,24 @@ def test_panels_renders_multipanel(tmp_path):
     )
     assert result.exit_code == 0, result.stdout
     assert (tmp_path / "out" / "figure.svg").exists()
+
+
+def test_render_snippet_emits_standards_baked_code():
+    result = runner.invoke(
+        app, ["render-snippet", "plot a glass brain of the t-map", "--journal", "nature"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert "nilearn" in result.stdout
+    assert "cm.vik" in result.stdout  # Crameri colormap baked in
+    assert "dpi=300" in result.stdout
+
+
+def test_plot_panels_renders_shared_axis(tmp_path):
+    data = tmp_path / "rois.json"
+    data.write_text(
+        '[{"groups": {"NT": [1,2,1], "ASD": [3,4,3]}, "ylabel": "DAT", "title": "ROI 1"}, '
+        '{"groups": {"NT": [2,3,2], "ASD": [4,5,4]}, "title": "ROI 2"}]'
+    )
+    result = runner.invoke(app, ["plot-panels", str(data), "--out", str(tmp_path / "out")])
+    assert result.exit_code == 0, result.stdout
+    assert (tmp_path / "out" / "figure.svg").exists()

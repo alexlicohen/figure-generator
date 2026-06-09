@@ -53,9 +53,22 @@ scidraw ingest aims.txt  --section aims    --out fig
 
 # distribution plot (no Claude call) — enforces no-dynamite / geom-by-n / SuperPlots
 scidraw plot data.json --out fig            # data.json: {"groups": {"ctrl": [...], "tx": [...]}}
+scidraw plot data.json --out fig            # add "annotate_stats": true for sig brackets (p, n, d)
 
-# multi-panel figure from a JSON list of schemas (shared palette, A/B/C letters)
-scidraw panels schemas.json --out fig
+# scatter / correlation — OLS line + 95% band + Pearson r/p/n, groups by colour + marker
+scidraw scatter corr.json --out fig         # corr.json: {"x": [...], "y": [...], "groups": [...]}
+
+# multi-format / journal-sized export (any local render command)
+scidraw plot data.json --out fig --format pdf --format eps --format tiff --width double
+
+# real-data neuroimaging render: a standards-baked nilearn / Surf Ice snippet, not a schematic
+scidraw render-snippet "glass brain of the group t-map" --journal nature
+
+# multi-panel figure from a JSON list of schemas — grid layout, shared palette + legend
+scidraw panels schemas.json --out fig --ncols 2
+
+# data-plot panels sharing a y-axis + one legend (box/violin across conditions, directly comparable)
+scidraw plot-panels rois.json --out fig     # rois.json: [PlotRequest, PlotRequest, ...]
 
 # grant graphical abstract (structural, no image models) — image slots take your own renders
 scidraw abstract abstract.json --out fig --style cohen
