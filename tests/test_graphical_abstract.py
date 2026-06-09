@@ -167,6 +167,22 @@ def test_column_width_and_reflow():
     assert th > fh  # third-column reflows the 3 cards from one row to a vertical stack
 
 
+def test_image_height_override_grows_the_slot():
+    from scidraw_agent.generators.graphical_abstract import _img_h
+
+    tall = GAItem(kind="image", image=GAImage(caption="panel", height=260))
+    default = GAItem(kind="image", image=GAImage(caption="panel"))
+    assert _img_h(tall) == 260
+    assert _img_h(default) == 96  # backward-compatible default
+    # a taller slot makes the whole abstract taller (legible data panels, not thumbnails)
+    def height(item):
+        ga = GraphicalAbstract(sections=[GASection(title="A", items=[item])])
+        root = etree.fromstring(build_graphical_abstract_svg(ga, cohen_lab(), None)[0].encode())
+        return float(root.get("height"))
+
+    assert height(tall) > height(default) + 100
+
+
 def test_card_icon_recoloured_and_missing_icon_warns():
     # no fetcher -> icon can't resolve -> graceful warning, no crash
     ga = GraphicalAbstract(
