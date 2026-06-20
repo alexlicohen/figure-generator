@@ -31,6 +31,12 @@ MIN_ITEM_W = 200.0  # below this, a row's items reflow to stack vertically
 # Column width of the page: figures are rarely full width (most are half / third column).
 COLUMN_PX = {"full": 1180.0, "half": 660.0, "third": 440.0}
 ICON_PX = 34.0
+IMG_PX = 96.0  # default image-slot height; GAImage.height overrides it for legible data panels
+
+
+def _img_h(item: GAItem) -> float:
+    """The drawn height of an item's single image slot (GAImage.height override, else default)."""
+    return (item.image.height if item.image and item.image.height else 0.0) or IMG_PX
 
 
 def _resolve_icon(query: str | None, fetcher) -> str | None:
@@ -145,7 +151,7 @@ def _item_height(item: GAItem) -> float:
         rows = math.ceil(max(1, len(item.images)) / _grid_cols(item))
         return (26 if item.title else 8) + rows * 84 + 8
     if item.kind == "image" or item.image:
-        return 26 + 104 + (18 if (item.image and item.image.caption) else 6)
+        return 26 + (_img_h(item) + 8) + (18 if (item.image and item.image.caption) else 6)
     return 26 + (ICON_PX + 8 if item.icon else 0) + max(1, len(item.lines)) * 15 + 18
 
 
@@ -236,7 +242,9 @@ def _draw_item(c, item, x, y, w, h, style, fetcher):
         c.header_bar(x, y, w, item.title, accent)
     cy = y + (26 if item.title else 8)
     if item.image or item.kind == "image":
-        frag, rec, warn = _embed_image(item.image, x + 12, cy + 6, w - 24, 96, style, fetcher)
+        frag, rec, warn = _embed_image(
+            item.image, x + 12, cy + 6, w - 24, _img_h(item), style, fetcher
+        )
         c.raw(frag)
         if rec:
             assets.append(rec)

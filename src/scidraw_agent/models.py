@@ -199,11 +199,16 @@ class GAStep(BaseModel):
 
 class GAImage(BaseModel):
     """An image slot. A real render (``path``, PNG/SVG) is preferred and NEVER generated; a
-    CC ``asset_query`` is the fallback; absent both, a labelled placeholder is drawn."""
+    CC ``asset_query`` is the fallback; absent both, a labelled placeholder is drawn.
+
+    ``height`` overrides the slot's drawn height in px (0 = the default thumbnail height); raise
+    it so a real data panel (scatter, box panels) is legible rather than letterboxed small.
+    """
 
     path: str | None = None
     asset_query: str | None = None
     caption: str = ""
+    height: float = 0.0
 
 
 class GAItem(BaseModel):
