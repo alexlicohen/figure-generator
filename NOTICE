@@ -1,0 +1,36 @@
+scidraw-agent
+Copyright (c) scidraw-agent contributors
+Licensed under the MIT License (see LICENSE / pyproject.toml).
+
+------------------------------------------------------------------------
+Third-party material reused under the MIT License
+------------------------------------------------------------------------
+
+Reporting-guideline flow diagrams (CONSORT, PRISMA 2020, STROBE, STARD 2015)
+----------------------------------------------------------------------------
+The node skeletons / layouts and the count-derivation + cascade-reconciliation
+logic in `src/scidraw_agent/reporting/` are reimplemented from the
+**make-figures** skill by Aperivue (https://aperivue.com), licensed MIT
+(Copyright (c) 2026 Aperivue). Source:
+
+    https://github.com/Aperivue/medsci-skills  (skills/make-figures)
+
+Specifically:
+  * `reporting/templates.py` — the four flow node-skeletons translate the
+    structure of make-figures'
+    `references/exemplar_diagrams/{strobe,consort,prisma,stard}/template_input.yaml`
+    into scidraw-agent's FigureSchema IR. Only the flow STRUCTURE (which boxes,
+    spine order, where exclusion side-boxes branch) is reused — a fact/layout,
+    not copyrighted checklist text.
+  * `reporting/counts.py` — the count-extraction + caption-vs-flow reconciliation
+    is a Python port of make-figures' `scripts/derive_figure_legend_counts.py`,
+    and the placeholder count-fill of `scripts/fill_prisma_template.py`.
+  * `standards/linter.py` — the numeric thresholds MIN_READABLE_PX (14px) and
+    OUT_OF_PALETTE_TOLERANCE (0.15) are adopted as values from make-figures'
+    `scripts/critic_figure.py`; applied structurally on the SVG (no OCR / raster
+    critic is imported).
+
+The underlying reporting guidelines remain the work of their respective
+authorities (CONSORT Group, PRISMA, STROBE, STARD). No restrictive checklist
+documents (e.g. CONSORT-2010 CC-BY-NC, SPIRIT CC-BY-NC-ND) are bundled; only the
+flow node-skeleton/layout (an uncopyrightable fact) is reimplemented.

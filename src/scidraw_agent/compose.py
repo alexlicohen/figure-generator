@@ -161,6 +161,49 @@ def compose_figure(
     return manifest
 
 
+def compose_reporting_flow(
+    guideline: str,
+    out_dir: str | Path,
+    *,
+    counts: dict[str, int] | None = None,
+    config: Config | None = None,
+    style: StyleSpec | None = None,
+    palette: PaletteRegistry | None = None,
+    export_png: bool = True,
+    export_pdf: bool = False,
+    export_eps: bool = False,
+    export_tiff: bool = False,
+    figure_width: str = "none",
+) -> Manifest:
+    """Build + render a reporting-guideline participant-flow diagram (CONSORT / PRISMA /
+    STROBE / STARD) -> compliant SVG + raster + manifest (local, no API).
+
+    The flow skeleton is built by :mod:`scidraw_agent.reporting`; box counts are derived and
+    validated from ``counts`` (raising on an invented/stale count) or fall back to the worked
+    exemplar. Renders through the same ``PipelineGenerator`` + Design Standards Engine as every
+    other figure — one owner of flow rendering. The "never invent counts" self-check is run and
+    its findings are added to the manifest warnings.
+    """
+    from .reporting import build_guideline_flow
+    from .selfcheck import flow_count_problems
+
+    schema = build_guideline_flow(guideline, counts)
+    extra = flow_count_problems(schema)
+    return compose_figure(
+        schema,
+        out_dir,
+        config=config,
+        style=style,
+        palette=palette,
+        extra_warnings=extra,
+        export_png=export_png,
+        export_pdf=export_pdf,
+        export_eps=export_eps,
+        export_tiff=export_tiff,
+        figure_width=figure_width,
+    )
+
+
 def compose_panels(
     schemas: list[FigureSchema],
     out_dir: str | Path,

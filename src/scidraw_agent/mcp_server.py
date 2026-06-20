@@ -26,6 +26,7 @@ from .compose import compose_data_plot as _compose_data_plot
 from .compose import compose_figure as _compose_figure
 from .compose import compose_panels as _compose_panels
 from .compose import compose_plot_panels as _compose_plot_panels
+from .compose import compose_reporting_flow as _compose_reporting_flow
 from .compose import compose_scatter as _compose_scatter
 from .config import load_config
 from .extract import NeuroDeclineError, extract, neuro_decline_trigger
@@ -362,6 +363,30 @@ def compose_plot_panels_figure(
         )
     except DynamitePlotError as e:
         return {"blocked": [{"rule_id": "no_dynamite", "message": str(e)}]}
+    return _manifest_summary(manifest)
+
+
+@mcp.tool
+def make_reporting_flow(
+    guideline: str,
+    out_dir: str,
+    counts: dict | None = None,
+    journal: str = "nature",
+    house_style: str = "default",
+    formats: list[str] | None = None,
+    figure_width: str = "none",
+) -> dict:
+    """Build + render a reporting-guideline flow (CONSORT/PRISMA/STROBE/STARD) -> compliant figure (local, no API)."""  # noqa: E501
+    from .theme import cohen_lab
+
+    style = cohen_lab(journal) if house_style == "cohen" else StyleSpec(journal=journal)
+    try:
+        manifest = _compose_reporting_flow(
+            guideline, out_dir, counts=counts, config=load_config(), style=style,
+            **_export_kwargs(formats, figure_width),
+        )
+    except StyleGuardBlocked as e:
+        return {"blocked": [a.model_dump() for a in e.actions]}
     return _manifest_summary(manifest)
 
 

@@ -1,0 +1,172 @@
+{
+  "figure_type": "reporting_flow",
+  "entities": [
+    {
+      "id": "assessed",
+      "label": "Assessed for eligibility\n(n = 500)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "excl",
+      "label": "Excluded (n = 100):\n• Not meeting inclusion criteria\n• Declined to participate\n• Other reasons",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "assessed",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "rand",
+      "label": "Randomized\n(n = 400)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": true
+    },
+    {
+      "id": "alloc_tx",
+      "label": "Allocated to intervention\n(n = 200)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "intervention",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "alloc_ctrl",
+      "label": "Allocated to control\n(n = 200)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "control",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "fu_tx",
+      "label": "Lost to follow-up\nDiscontinued intervention",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "intervention",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "fu_ctrl",
+      "label": "Lost to follow-up\nDiscontinued control",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "control",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "ana_tx",
+      "label": "Analyzed\n(n = 200)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "intervention",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "ana_ctrl",
+      "label": "Analyzed\n(n = 200)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "control",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "assessed",
+      "target": "rand",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "rand",
+      "target": "alloc_tx",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "rand",
+      "target": "alloc_ctrl",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "alloc_tx",
+      "target": "fu_tx",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "alloc_ctrl",
+      "target": "fu_ctrl",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "fu_tx",
+      "target": "ana_tx",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "fu_ctrl",
+      "target": "ana_ctrl",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "assessed",
+      "target": "excl",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    }
+  ],
+  "data_kind": "none",
+  "notes": "consort",
+  "caption_seed": "CONSORT participant-flow diagram (parallel-arm RCT)."
+}

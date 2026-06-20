@@ -22,6 +22,11 @@ class FigureType(StrEnum):
     STUDY_DESIGN = "study_design"
     ANATOMICAL = "anatomical"
     DATA_PLOT = "data_plot"
+    # Reporting-guideline participant-flow diagram (CONSORT / PRISMA / STROBE / STARD).
+    # A layered top-down flow whose boxes carry derived (n=…) counts and whose exclusion
+    # reasons hang off the main spine as dashed, arrowless side-boxes. Rendered by the same
+    # Graphviz pipeline generator; never a separate flow engine.
+    REPORTING_FLOW = "reporting_flow"
 
 
 class EntityKind(StrEnum):
@@ -76,6 +81,22 @@ class Entity(BaseModel):
         default=None,
         description="Group/cohort name for stable colour+shape mapping across panels.",
     )
+    # -- reporting-flow side-box semantics (general; used by the pipeline generator) -- #
+    rank_with: str | None = Field(
+        default=None,
+        description="Entity id this box should share a horizontal rank with (Graphviz "
+        "rank=same). Used to place exclusion-reason side-boxes level with the spine node "
+        "they branch off, e.g. PRISMA 'Records excluded' beside 'Records screened'.",
+    )
+    side_box: bool = Field(
+        default=False,
+        description="Render as an annotation/side-box (note shape) rather than a main spine "
+        "node — exclusion-reason boxes in CONSORT/PRISMA/STROBE/STARD flows.",
+    )
+    highlight: bool = Field(
+        default=False,
+        description="Emphasise this node (e.g. the analytic-cohort / randomized / included box).",
+    )
 
 
 class Edge(BaseModel):
@@ -83,6 +104,22 @@ class Edge(BaseModel):
     target: str = Field(..., description="Entity id.")
     relation: EdgeRelation = EdgeRelation.OTHER
     label: str | None = None
+    # -- reporting-flow exclusion-cascade semantics (general edge flags) -- #
+    style: str = Field(
+        default="solid",
+        description="Edge line style: 'solid' (default) or 'dashed' (exclusion-cascade "
+        "side branch).",
+    )
+    arrow: bool = Field(
+        default=True,
+        description="Draw an arrowhead. False = an arrowless connector to a side-box "
+        "(the exclusion-reason annotation is not a flow step).",
+    )
+    constraint: bool = Field(
+        default=True,
+        description="Whether this edge constrains rank/layout (Graphviz constraint). False "
+        "lets a side-box sit beside its spine node without pushing the layout down a level.",
+    )
 
 
 class FigureSchema(BaseModel):
