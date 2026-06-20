@@ -12,6 +12,12 @@ from enum import StrEnum
 
 from ..models import StandardsTier
 
+# Numeric thresholds adopted from make-figures' critic_figure.py (Aperivue, MIT). The raster
+# critic OCR'd a rendered PNG; we apply the same *values* structurally on the SVG (no OCR /
+# raster step — the SVG standards engine already reads font sizes and fills directly).
+MIN_READABLE_PX = 14.0  # smallest comfortably-readable text at print scale (critic_figure)
+OUT_OF_PALETTE_TOLERANCE = 0.15  # max fraction of distinct fills allowed off the house palette
+
 
 class RuleId(StrEnum):
     # Colour
@@ -40,7 +46,12 @@ class RuleId(StrEnum):
     STAT_REPORTING = "stat_reporting"
     # Typography / layout
     MIN_FONT = "min_font"
+    READABLE_FONT = "readable_font"
     MIN_STROKE = "min_stroke"
+    # Palette discipline (raster-critic thresholds adopted structurally)
+    OUT_OF_PALETTE = "out_of_palette"
+    # Content fidelity
+    SOURCE_COVERAGE = "source_coverage"
     # Neuro integrity
     NEURO_DECLINE = "neuro_decline"
     BRAIN_ORIENTATION = "brain_orientation"
@@ -181,6 +192,27 @@ RULES: dict[RuleId, Rule] = {
         StandardsTier.BLOCK,
         "Text below the journal minimum font size.",
         "https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/",
+    ),
+    RuleId.READABLE_FONT: Rule(
+        RuleId.READABLE_FONT,
+        StandardsTier.WARN,
+        f"Text below the {MIN_READABLE_PX:g}px comfortably-readable threshold (above the hard "
+        "journal floor but small for a flow/abstract at print scale).",
+        "https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/",
+    ),
+    RuleId.OUT_OF_PALETTE: Rule(
+        RuleId.OUT_OF_PALETTE,
+        StandardsTier.WARN,
+        f">{OUT_OF_PALETTE_TOLERANCE:.0%} of distinct fills fall outside the colour-blind-safe "
+        "house palette — colours not in the palette may not be CVD-distinguishable.",
+        "https://www.nature.com/articles/nmeth.1618",
+    ),
+    RuleId.SOURCE_COVERAGE: Rule(
+        RuleId.SOURCE_COVERAGE,
+        StandardsTier.WARN,
+        "Figure labels cover few of the salient source words — content the source supports may "
+        "be missing (coverage check, no OCR).",
+        "https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003833",
     ),
     RuleId.MIN_STROKE: Rule(
         RuleId.MIN_STROKE,

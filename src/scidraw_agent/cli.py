@@ -18,6 +18,7 @@ from .compose import (
     compose_graphical_abstract,
     compose_panels,
     compose_plot_panels,
+    compose_reporting_flow,
     compose_scatter,
 )
 from .config import load_config
@@ -350,6 +351,40 @@ def compose_schema(
         manifest = compose_figure(
             fig, out, config=config, style=_style(journal, allow_override, style), fetcher=fetcher,
             **_export_kwargs(fmt, width),
+        )
+    except StyleGuardBlocked as e:
+        for a in e.actions:
+            typer.secho(f"BLOCK {a.rule_id}: {a.message}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    _emit(manifest)
+
+
+@app.command()
+def reporting(
+    guideline: str,
+    out: Path = typer.Option(Path("figure_out"), help="Output directory."),
+    counts: Path = typer.Option(None, help="JSON file mapping box-key -> int (optional)."),
+    journal: str = typer.Option("nature", help="Journal preset."),
+    style: str = typer.Option("default", help="House style: 'default' or 'cohen'."),
+    allow_override: list[str] = typer.Option(None, help="BLOCK rule id(s) to override."),
+    fmt: list[str] = typer.Option(
+        None, "--format", help="Export format(s): png pdf eps tiff (repeatable). Default png."
+    ),
+    width: str = typer.Option("none", help="Physical size: none | single | double (column)."),
+) -> None:
+    """Render a reporting-guideline participant-flow diagram (consort|prisma|strobe|stard).
+
+    GUIDELINE is the reporting standard (strobe|consort|prisma|stard). Supply --counts with a
+    JSON file mapping box-key -> int to populate the diagram; omit for the worked exemplar.
+    No Claude API call.
+    """
+    counts_data: dict | None = None
+    if counts is not None:
+        counts_data = json.loads(counts.read_text())
+    try:
+        manifest = compose_reporting_flow(
+            guideline, out, counts=counts_data, config=load_config(),
+            style=_style(journal, allow_override, style), **_export_kwargs(fmt, width),
         )
     except StyleGuardBlocked as e:
         for a in e.actions:

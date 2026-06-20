@@ -16,7 +16,7 @@ from lxml import etree
 from .. import palette
 from ..models import DataKind, StandardsAction, StandardsReport
 from ..theme import PT_TO_PX, StyleSpec
-from .linter import RuleId, rule
+from .linter import MIN_READABLE_PX, OUT_OF_PALETTE_TOLERANCE, RuleId, rule
 
 _LEADING_NUMBER = re.compile(r"^\s*(-?\d*\.?\d+)")
 
@@ -119,6 +119,8 @@ def enforce(
     _check_bubble_area(root, style, report)
     _check_text_contrast(root, style, report)
     _check_abbreviations(root, style, report)
+    _check_readable_font(root, style, report)
+    _check_out_of_palette(root, style, report)
     _check_fonts(root, style, report, blocked)
 
     if blocked:
@@ -660,6 +662,71 @@ def _check_abbreviations(root, style: StyleSpec, report: StandardsReport) -> Non
                 RuleId.ABBREVIATION_LEGEND,
                 auto_fixed=False,
                 message=f"Define these abbreviations in the caption: {', '.join(sorted(toks))}.",
+            )
+        )
+
+
+def _check_readable_font(root, style: StyleSpec, report: StandardsReport) -> None:
+    """WARN when text is above the hard journal floor but below the comfortably-readable
+    threshold (``MIN_READABLE_PX`` = 14px, adopted from critic_figure.py). Advisory only —
+    the hard BLOCK floor is ``_check_fonts``; this nudges toward print-legible flow/abstract
+    text without aborting."""
+    floor = style.min_font_px  # the hard journal floor handled by _check_fonts
+    smallest: float | None = None
+    for el in root.iter():
+        if _local(el) != "text":
+            continue
+        size = _font_size_px(el.get("font-size") or _parse_style(el.get("style")).get("font-size"))
+        if size is None:
+            continue
+        # only flag the band between the hard floor and the readable threshold (sub-floor text
+        # is the BLOCK case, reported separately).
+        if floor <= size < MIN_READABLE_PX:
+            smallest = size if smallest is None else min(smallest, size)
+    if smallest is not None:
+        report.add(
+            _action(
+                RuleId.READABLE_FONT,
+                auto_fixed=False,
+                message=f"Smallest text {smallest:.1f}px < {MIN_READABLE_PX:g}px readable "
+                "threshold — enlarge for print legibility.",
+            )
+        )
+
+
+def _check_out_of_palette(root, style: StyleSpec, report: StandardsReport) -> None:
+    """WARN when more than ``OUT_OF_PALETTE_TOLERANCE`` (15%) of the distinct fill colours fall
+    outside the house palette + neutrals. Adopted from critic_figure.py's dominant-colour
+    check, applied structurally on the SVG (distinct fills, no raster sampling). Greys/white/
+    black neutrals and the active categorical palette are in-palette; everything else counts
+    against the budget."""
+    allowed = {c.lower() for c in style.categorical}
+    allowed |= {c.lower() for c in palette.OKABE_ITO.values()}
+    allowed |= {style.node_ink.lower(), style.baseline_grey.lower(), style.gridline_color.lower()}
+    distinct: set[str] = set()
+    out: set[str] = set()
+    for el in root.iter():
+        for attr in ("fill", "stroke"):
+            val = (el.get(attr) or _parse_style(el.get("style")).get(attr) or "").strip().lower()
+            if not val or val in _WHITE or val == "black" or val == "#000000":
+                continue
+            rgb = palette.parse_color(val)
+            if rgb is None:
+                continue
+            key = palette._hex(rgb).lower()
+            distinct.add(key)
+            # achromatic (grey) fills are always allowed — they're neutral, not encoding
+            if key in allowed or abs(max(rgb) - min(rgb)) <= 12:
+                continue
+            out.add(key)
+    if distinct and len(out) / len(distinct) > OUT_OF_PALETTE_TOLERANCE:
+        frac = len(out) / len(distinct)
+        report.add(
+            _action(
+                RuleId.OUT_OF_PALETTE,
+                auto_fixed=False,
+                message=f"{frac:.0%} of distinct fills off the house palette "
+                f"(> {OUT_OF_PALETTE_TOLERANCE:.0%} tolerance): {', '.join(sorted(out))}.",
             )
         )
 

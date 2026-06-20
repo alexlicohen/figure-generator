@@ -1,0 +1,191 @@
+{
+  "figure_type": "reporting_flow",
+  "entities": [
+    {
+      "id": "source",
+      "label": "Source population\n(records = 120,000)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "unique",
+      "label": "Unique subjects after deduplication\nN = 85,000",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "excl1",
+      "label": "Excluded (n = 5,000):\n• Missing age/sex\n• Outside age range",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "unique",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "eligible",
+      "label": "Meeting eligibility criteria\nN = 80,000",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "excl2",
+      "label": "Excluded (n = 2,500):\n• Prior event at baseline\n• Follow-up ≤ 0 days",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "eligible",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "cohort",
+      "label": "Analytic cohort\nN = 77,500",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": true
+    },
+    {
+      "id": "exp",
+      "label": "Exposed\nn = 20,000",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "exposed",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "unexp",
+      "label": "Unexposed\nn = 57,500",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "unexposed",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "out_exp",
+      "label": "Incident events\n(exposed)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "exposed",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "out_unexp",
+      "label": "Incident events\n(unexposed)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "unexposed",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "source",
+      "target": "unique",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "unique",
+      "target": "eligible",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "eligible",
+      "target": "cohort",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "cohort",
+      "target": "exp",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "cohort",
+      "target": "unexp",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "exp",
+      "target": "out_exp",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "unexp",
+      "target": "out_unexp",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "unique",
+      "target": "excl1",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    },
+    {
+      "source": "eligible",
+      "target": "excl2",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    }
+  ],
+  "data_kind": "none",
+  "notes": "strobe",
+  "caption_seed": "STROBE participant-flow diagram (observational cohort)."
+}

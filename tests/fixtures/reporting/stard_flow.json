@@ -1,0 +1,191 @@
+{
+  "figure_type": "reporting_flow",
+  "entities": [
+    {
+      "id": "eligible",
+      "label": "Eligible patients\n(n = 500)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "excl",
+      "label": "Excluded (n = 50):\n• Contraindication to index test\n• No reference standard\n• Declined",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "eligible",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "index",
+      "label": "Received index test\n(n = 450)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": true
+    },
+    {
+      "id": "ref",
+      "label": "Received reference standard\n(n = 450)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "idx_pos",
+      "label": "Index test positive\n(n = 180)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "positive",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "idx_neg",
+      "label": "Index test negative\n(n = 270)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "negative",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "tp",
+      "label": "Reference positive\nTP = 160",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "positive",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "fp",
+      "label": "Reference negative\nFP = 20",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "positive",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "fn",
+      "label": "Reference positive\nFN = 15",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "negative",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "tn",
+      "label": "Reference negative\nTN = 255",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": "negative",
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "eligible",
+      "target": "index",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "index",
+      "target": "ref",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "ref",
+      "target": "idx_pos",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "ref",
+      "target": "idx_neg",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "idx_pos",
+      "target": "tp",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "idx_pos",
+      "target": "fp",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "idx_neg",
+      "target": "fn",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "idx_neg",
+      "target": "tn",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "eligible",
+      "target": "excl",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    }
+  ],
+  "data_kind": "none",
+  "notes": "stard",
+  "caption_seed": "STARD 2015 flow diagram (diagnostic accuracy)."
+}

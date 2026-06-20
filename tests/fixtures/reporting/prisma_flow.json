@@ -1,0 +1,191 @@
+{
+  "figure_type": "reporting_flow",
+  "entities": [
+    {
+      "id": "id_db",
+      "label": "Records identified from databases\n(n = 3,500)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "id_other",
+      "label": "Records identified from other sources\n(n = 45)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "dedup",
+      "label": "Records after duplicates removed\n(n = 2,700)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "screened",
+      "label": "Records screened (title/abstract)\n(n = 2,700)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "excl_ta",
+      "label": "Records excluded\n(n = 2,480)",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "screened",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "ft_sought",
+      "label": "Reports sought for retrieval\n(n = 220)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "ft_notret",
+      "label": "Reports not retrieved\n(n = 12)",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "ft_sought",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "ft_assessed",
+      "label": "Reports assessed for eligibility\n(n = 208)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": false
+    },
+    {
+      "id": "ft_excl",
+      "label": "Reports excluded (n = 180):\n• Wrong population\n• Wrong index test\n• Wrong outcome\n• Abstract only\n• Duplicate cohort",
+      "kind": "other",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": "ft_assessed",
+      "side_box": true,
+      "highlight": false
+    },
+    {
+      "id": "included",
+      "label": "Studies included in review\n(n = 28)",
+      "kind": "cohort",
+      "suggested_asset_query": null,
+      "group": null,
+      "rank_with": null,
+      "side_box": false,
+      "highlight": true
+    }
+  ],
+  "edges": [
+    {
+      "source": "id_db",
+      "target": "dedup",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "id_other",
+      "target": "dedup",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": false
+    },
+    {
+      "source": "dedup",
+      "target": "screened",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "screened",
+      "target": "ft_sought",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "ft_sought",
+      "target": "ft_assessed",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "ft_assessed",
+      "target": "included",
+      "relation": "flows_to",
+      "label": null,
+      "style": "solid",
+      "arrow": true,
+      "constraint": true
+    },
+    {
+      "source": "screened",
+      "target": "excl_ta",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    },
+    {
+      "source": "ft_sought",
+      "target": "ft_notret",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    },
+    {
+      "source": "ft_assessed",
+      "target": "ft_excl",
+      "relation": "other",
+      "label": null,
+      "style": "dashed",
+      "arrow": false,
+      "constraint": false
+    }
+  ],
+  "data_kind": "none",
+  "notes": "prisma",
+  "caption_seed": "PRISMA 2020 flow diagram (systematic review)."
+}
