@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
+from scidraw_agent.compose import compose_figure
 from scidraw_agent.models import Edge, Entity, FigureSchema, FigureType
 from scidraw_agent.palette import PaletteRegistry
 from scidraw_agent.reporting import (
@@ -21,6 +22,7 @@ from scidraw_agent.reporting import (
     build_guideline_flow,
     build_prisma,
     build_stard,
+    build_strobe,
 )
 from scidraw_agent.reporting.counts import (
     Cascade,
@@ -279,3 +281,86 @@ def test_explicit_counts_fill_the_boxes():
     assert "800" in labels and "600" in labels and "300" in labels
     # the supplied counts are internally consistent, so the self-check stays clean
     assert flow_count_problems(schema) == []
+
+
+# --------------------------------------------------------------------------- #
+# Caller-supplied counts go through the SAME validated path as the exemplar.
+# These are the regression guards for the reporting-flow count-derivation
+# defects (C1/H1/H2/C2): a caller dict must be reconciled, not rendered raw.
+# --------------------------------------------------------------------------- #
+def test_caller_counts_inconsistent_arms_raise_count_validation_error():
+    # C1: build_consort with arms that do NOT sum to the randomized total must
+    # raise (validate_cascade has to run on the caller branch, not only the
+    # counts-is-None exemplar branch). alloc_tx + alloc_ctrl = 1000 != rand 600.
+    with pytest.raises(CountValidationError):
+        build_consort(
+            {"assessed": 800, "rand": 600, "alloc_tx": 999, "alloc_ctrl": 1}
+        )
+
+
+def test_caller_counts_inconsistent_derivation_raise():
+    # C1: derivation law — rand must equal assessed - excluded. Here the spine
+    # 800 -> 600 implies 200 excluded; arms are consistent (300+300=600) but the
+    # build must still reconcile the cascade. An assessed/rand pair that cannot
+    # reconcile (e.g. arms summing to the wrong total) surfaces as an error.
+    with pytest.raises(CountValidationError):
+        build_consort(
+            {"assessed": 800, "rand": 600, "alloc_tx": 400, "alloc_ctrl": 400}
+        )
+
+
+def test_caller_counts_side_box_number_derived_from_data():
+    # H1: the exclusion side-box (n = …) must be DERIVED from the cascade's
+    # excluded value (parent - child), not a hardcoded literal. Spine 800 -> 750
+    # means 50 excluded; the side box must read 50, never the exemplar's 100.
+    schema = build_consort(
+        {"assessed": 800, "rand": 750, "alloc_tx": 375, "alloc_ctrl": 375}
+    )
+    side = next(e for e in schema.entities if e.id == "excl")
+    excluded = extract_counts(side.label)
+    assert excluded and excluded[0] == 50  # 800 - 750, NOT the literal 100
+    # and the spine boxes show the caller numbers
+    labels = " ".join(e.label for e in schema.entities)
+    assert "800" in labels and "750" in labels
+    # internally consistent -> self-check clean
+    assert flow_count_problems(schema) == []
+
+
+def test_strobe_side_box_numbers_derived_from_data():
+    # H1 (second guideline): STROBE has two exclusion side-boxes; both numbers
+    # must track the caller's cascade, not the 5,000 / 2,500 exemplar literals.
+    schema = build_strobe(
+        {
+            "source": 1000,
+            "unique": 900,
+            "eligible": 850,
+            "cohort": 800,
+            "exp": 300,
+            "unexp": 500,
+        }
+    )
+    excl1 = next(e for e in schema.entities if e.id == "excl1")
+    excl2 = next(e for e in schema.entities if e.id == "excl2")
+    assert extract_counts(excl1.label)[0] == 50   # unique 900 -> eligible 850
+    assert extract_counts(excl2.label)[0] == 50   # eligible 850 -> cohort 800
+    assert flow_count_problems(schema) == []
+
+
+def test_caller_counts_missing_key_raises_count_validation_not_keyerror():
+    # H2: a partial caller dict must raise CountValidationError (the
+    # "counts must come from data, not be invented" guard), NOT a bare KeyError.
+    with pytest.raises(CountValidationError):
+        build_consort({"assessed": 800})
+
+
+def test_compose_figure_surfaces_flow_count_warning_for_reporting_flow(tmp_path):
+    # C2: an externally-authored reporting_flow schema rendered through
+    # compose_figure (the compose-schema render path) must have the
+    # flow-count self-check run and its findings land in the manifest warnings.
+    # Inflate the terminal box above its inflow.
+    schema = build_prisma()
+    for e in schema.entities:
+        if e.id == "included":
+            e.label = "Studies included in review\n(n = 9999)"
+    manifest = compose_figure(schema, tmp_path, export_png=False)
+    assert any("9999" in w for w in manifest.warnings)

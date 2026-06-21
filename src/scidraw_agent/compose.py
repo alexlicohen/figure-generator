@@ -139,6 +139,18 @@ def compose_figure(
     result = route(schema.figure_type).generate(schema, style, palette, fetcher=fetcher)
     cleaned, report = enforce(result.svg, style, data_kind=schema.data_kind)
 
+    # A reporting-flow schema authored externally (e.g. flowfig JSON rendered via
+    # compose-schema) never went through the cascade builder, so run the inflow-conservation
+    # self-check here so an inflated/stale count surfaces as a manifest warning rather than
+    # rendering silently. (For a flow built from explicit data, compose_reporting_flow already
+    # runs the stronger per-step cascade arithmetic; this is the always-applicable guard for an
+    # arbitrary external schema whose cascade relationships are not known.)
+    flow_warnings: list[str] = []
+    if schema.figure_type == FigureType.REPORTING_FLOW:
+        from .selfcheck import flow_count_problems
+
+        flow_warnings = flow_count_problems(schema)
+
     svg_path = out_dir / "figure.svg"
     svg_path.write_text(cleaned)
     rasters, raster_warnings = _export_raster(
@@ -155,7 +167,7 @@ def compose_figure(
         assets=result.assets,
         standards=report,
         credits=_write_credits(out_dir, result.assets),
-        warnings=result.warnings + (extra_warnings or []) + raster_warnings,
+        warnings=result.warnings + (extra_warnings or []) + flow_warnings + raster_warnings,
     )
     (out_dir / "figure.manifest.json").write_text(manifest.model_dump_json(indent=2))
     return manifest
@@ -185,17 +197,17 @@ def compose_reporting_flow(
     its findings are added to the manifest warnings.
     """
     from .reporting import build_guideline_flow
-    from .selfcheck import flow_count_problems
 
     schema = build_guideline_flow(guideline, counts)
-    extra = flow_count_problems(schema)
+    # The "never invent counts" self-check (flow_count_problems) is now run inside
+    # compose_figure for every REPORTING_FLOW schema — one owner — so it is not pre-computed
+    # here (avoids duplicate warnings).
     return compose_figure(
         schema,
         out_dir,
         config=config,
         style=style,
         palette=palette,
-        extra_warnings=extra,
         export_png=export_png,
         export_pdf=export_pdf,
         export_eps=export_eps,

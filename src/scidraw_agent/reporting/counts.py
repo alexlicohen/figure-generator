@@ -142,6 +142,14 @@ def validate_cascade(cascade: Cascade) -> None:
                         f"box '{node.key}' n={node.count} != {parent.key} "
                         f"({parent.count}) - excluded ({node.excluded}) = {expected}"
                     )
+                # Non-negativity: a derived box cannot exceed its parent (the excluded count
+                # cannot be negative — counts only shrink down a single-parent waterfall).
+                if node.excluded < 0:
+                    problems.append(
+                        f"box '{node.key}' n={node.count} exceeds {parent.key} "
+                        f"({parent.count}) — implied excluded is negative ({node.excluded}); "
+                        "a count cannot grow down the flow (invented/stale count)"
+                    )
         if node.split:
             missing = [c for c in node.split if c not in nodes]
             if missing:
